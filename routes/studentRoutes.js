@@ -1,5 +1,5 @@
 const express = require('express');
-const Student = require('../model/student');
+import Student from "../models/User.model.js";
 
 const router = express.Router();
 

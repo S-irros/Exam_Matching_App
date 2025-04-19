@@ -2,6 +2,7 @@
 import express from "express";
 import Subject from "../models/subjectModel.js";
 import GradeLevel from "../models/gradeLevelModel.js";
+import User from "../models/User.model.js";
 
 const router = express.Router();
 
@@ -10,7 +11,6 @@ const router = express.Router();
 router.post("/", async (req, res) => {
   try {
     const { name, gradeLevelId } = req.body;
-
     if (!name || !gradeLevelId) {
       return res.status(400).json({ message: "Name and gradeLevelId are required." });
     }
@@ -27,6 +27,12 @@ router.post("/", async (req, res) => {
 
     const subject = new Subject({ name, gradeLevelId });
     await subject.save();
+
+    // أضف المادة للـ subjects array في GradeLevel
+    await GradeLevel.updateOne(
+      { gradeLevelId },
+      { $addToSet: { subjects: name } } // $addToSet عشان ما يضيفش نفس المادة مرتين
+    );
 
     res.status(201).json({
       message: "Subject added successfully!",
@@ -95,16 +101,11 @@ router.delete("/:id", async (req, res) => {
 
 router.get("/", async (req, res) => {
   try {
-    const { gradeLevelId } = req.query;
+    const { gradeLevelId } = req.query.gradeLevelId;
 
-    let subjects;
-    if (gradeLevelId) {
-      subjects = await Subject.find({ gradeLevelId });
-    } else {
-      subjects = await Subject.find();
-    }
+    const mySubjects = await Subject.find(gradeLevelId).populate("gradeLevelRef");
 
-    res.status(200).json(subjects);
+    res.status(200).json(mySubjects);
   } catch (error) {
     console.error("❌ Error fetching subjects:", error.message);
     res.status(500).json({ message: "Error fetching subjects.", error: error.message });

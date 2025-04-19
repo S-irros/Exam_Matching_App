@@ -1,6 +1,7 @@
 import express from "express";
 import User from "../models/User.model.js";
 import Point from "../models/pointModel.js";
+import Rank from "../models/rankModel.js"; // أضفنا الـ Rank موديل
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 
@@ -23,10 +24,6 @@ const verifyToken = async (email, token) => {
     if (!user) {
       console.log("User not found in database for email:", email);
       throw new Error("User not found in database");
-    }
-    if (user.role !== "student") {
-      console.log("User role is not student:", user.role);
-      throw new Error("User is not a student");
     }
 
     return { ...user.toObject(), student_id: user.randomId };
@@ -63,14 +60,17 @@ const authenticateToken = async (req, res, next) => {
 
 // روت عرض بروفايل الطالب
 router.get("/student-profile", authenticateToken, async (req, res) => {
-  const { student_id: studentId } = req.user; // تصحيح اسم المفتاح
-  console.log("Searching for studentId (as String):", studentId);
-  console.log("Searching for studentId (as Number):", Number(studentId));
+  const { student_id: rawStudentId } = req.user;
+  console.log("Raw studentId from token:", rawStudentId);
 
-  // التحقق من وجود studentId
-  if (!studentId) {
-    return res.status(400).json({ message: "Student ID is missing from user data." });
+  // التأكد من تحويل studentId لـ Number
+  const studentId = Number(rawStudentId);
+  if (isNaN(studentId)) {
+    console.error("❌ Invalid studentId, cannot convert to Number:", rawStudentId);
+    return res.status(400).json({ message: "Invalid studentId. It must be a number." });
   }
+
+  console.log("Searching for studentId (as Number):", studentId);
 
   try {
     // جلب الاسم من جدول User
@@ -79,27 +79,20 @@ router.get("/student-profile", authenticateToken, async (req, res) => {
       return res.status(404).json({ message: "User not found." });
     }
 
-    // جلب جميع الطلاب وترتيبهم بناءً على النقاط
-    const allStudents = await Point.find().sort({ totalPoints: -1 }).lean();
-    console.log("All students from Point:", allStudents);
+    // جلب النقاط من جدول Point
+    const point = await Point.findOne({ studentId }).lean();
+    console.log("Found points for student:", point);
+
+    // جلب الرتبة من جدول Rank
+    const rank = await Rank.findOne({ studentId: studentId.toString() }).lean();
+    console.log("Found rank for student:", rank);
 
     let profile = {
       studentId: studentId,
       name: user.name || "Unknown",
-      totalPoints: 0,
-      rank: null,
+      totalPoints: point ? point.totalPoints : 0,
+      rank: rank ? rank.rank : null,
     };
-
-    if (allStudents.length > 0) {
-      const studentIndex = allStudents.findIndex(student => Number(student.studentId) === Number(studentId));
-      console.log("Student index:", studentIndex);
-      if (studentIndex !== -1) {
-        const studentRank = studentIndex + 1;
-        const studentData = allStudents[studentIndex];
-        profile.totalPoints = studentData.totalPoints;
-        profile.rank = studentRank;
-      }
-    }
 
     res.status(200).json({
       message: "Student profile retrieved successfully!",

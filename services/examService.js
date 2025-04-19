@@ -1,123 +1,93 @@
-// services/examService.js
 import axios from "axios";
+import Question from "../models/questionModel.js";
 import Exam from "../models/examModel.js";
 import ExamRecord from "../models/examRecordModel.js";
-import Question from "../models/questionModel.js";
-import StudentAnswer from "../models/studentAnswerModel.js";
 import Point from "../models/pointModel.js";
-import updateTotalPoints from "./pointService.js";
+import StudentAnswer from "../models/studentAnswerModel.js";
 
-// تعريف قيم WebSocket readyState يدويًا
-const READY_STATES = {
-  CONNECTING: 0,
-  OPEN: 1,
-  CLOSING: 2,
-  CLOSED: 3,
-};
-
-async function startExam(student, match) {
+export async function startExam(student1, student2) {
   try {
-    console.log("📡 Starting exam request for:", student.email, "and", match.email);
-    const studentIds = [student.student_id, match.student_id];
+    const studentIds = [student1.student_id, student2.student_id];
+    const subjectId = student1.subjectId;
+    const gradeLevelId = student1.gradeLevelId;
+
     const response = await axios.post("http://localhost:8080/api/exams/start-exam", {
       studentIds,
-      subjectId: student.subjectId,
-      gradeLevelId: student.gradeLevelId,
+      subjectId,
+      gradeLevelId,
     });
-    let { examId, duration, questions } = response.data;
 
-    if (!questions || questions.length === 0) {
-      console.log(`⚠️ No questions found for exam ${examId}, generating new ones...`);
-      const answeredQuestions = await StudentAnswer.find({ studentId: student.student_id }).distinct("questionId");
-      let newQuestions = await Question.find({
-        subjectId: student.subjectId,
-        gradeLevelId: student.gradeLevelId,
-        _id: { $nin: answeredQuestions },
-      }).lean(); // استخدام .lean() لتحسين الأداء وجلب الداتا كـ object
+    const { examId, questions, duration } = response.data;
 
-      console.log("🔍 Found raw questions for student:", newQuestions.length);
-
-      // إزالة التكرار بناءً على _id
-      const uniqueQuestions = Array.from(
-        new Map(newQuestions.map(q => [q._id.toString(), q])).values()
-      );
-      newQuestions = uniqueQuestions;
-
-      // لو مفيش أسئلة متاحة، نرمي خطأ
-      if (newQuestions.length === 0) {
-        throw new Error("No questions available to generate for this exam.");
-      }
-
-      // تحويل الأسئلة للصيغة المطلوبة
-      questions = newQuestions.map(q => ({
-        questionId: q._id,
-        questionText: q.questionText,
-        options: q.options,
-        marks: q.marks || 5, // افتراض إن الـ marks 5 لو مفيش قيمة
-      }));
-
-      // تحديث الامتحان بالأسئلة الفريدة
-      await Exam.updateOne(
-        { _id: examId },
-        { $set: { questions: questions } },
-        { upsert: true }
-      );
-    }
-
-    for (const s of [student, match]) {
-      await ExamRecord.updateOne(
-        { examId, studentId: s.student_id },
-        { $set: { score: 0, createdAt: new Date(), updatedAt: new Date() } },
-        { upsert: true }
-      );
-    }
-
-    [student, match].forEach(s => {
-      if (s.ws && s.ws.readyState === READY_STATES.OPEN) {
-        s.ws.examId = examId;
-        s.ws.verified = true;
-        s.ws.send(JSON.stringify({ type: "exam_started", examId, duration, questions }));
-      }
-    });
-    console.log(`📚 Exam started for ${student.email} and ${match.email} with ${questions.length} questions`);
-  } catch (err) {
-    console.error("❌ Failed to start exam:", err.message);
-    [student, match].forEach(s => {
-      if (s && s.ws && s.ws.readyState === READY_STATES.OPEN) {
-        s.ws.send(JSON.stringify({ type: "error", message: `Failed to start the exam: ${err.message}` }));
-      }
-    });
+    student1.ws.send(
+      JSON.stringify({
+        type: "exam_started",
+        examId,
+        duration,
+        questions,
+      })
+    );
+    student2.ws.send(
+      JSON.stringify({
+        type: "exam_started",
+        examId,
+        duration,
+        questions,
+      })
+    );
+  } catch (error) {
+    console.error("❌ Error starting exam in examService:", error.message);
+    throw error;
   }
 }
 
-async function calculateScore(examId, studentId, answers) {
-  try {
-    const exam = await Exam.findById(examId);
-    if (!exam) throw new Error("Exam not found");
+export async function calculateScore(examId, studentId, answers) {
+  const exam = await Exam.findById(examId);
+  if (!exam) throw new Error("Exam not found");
 
-    let totalScore = 0;
-    const answerRecords = [];
+  const examQuestions = exam.questions;
+  const questionMap = new Map(examQuestions.map((q) => [q.questionId.toString(), q]));
 
-    for (let answer of answers) {
-      const question = exam.questions.find(q => q.questionId.toString() === answer.questionId.toString());
-      const fullQuestion = await Question.findById(question.questionId);
-      let points = 0;
-      if (fullQuestion && answer.selectedAnswer === fullQuestion.correctAnswer) {
-        points = question.marks;
-        totalScore += points;
-      }
-      answerRecords.push({ examId, studentId, questionId: question.questionId, answer: answer.selectedAnswer, points });
-    }
+  let totalScore = 0;
+  const studentAnswers = [];
 
-    if (answerRecords.length > 0) await StudentAnswer.insertMany(answerRecords);
-    await ExamRecord.updateOne({ examId, studentId }, { $set: { score: totalScore, updatedAt: new Date() } });
-    await updateTotalPoints(studentId, totalScore);
-    await axios.post("http://localhost:8080/api/update-ranks");
-    return totalScore;
-  } catch (err) {
-    console.error("❌ Error calculating score:", err.message);
-    throw err;
+  // جيب كل الأسئلة مرة واحدة عشان الأداء
+  const questionIds = answers.map((answer) => answer.questionId);
+  const questions = await Question.find({ _id: { $in: questionIds } }).select("correctAnswer marks");
+
+  // اعمل ماب للـ questionId مع الـ correctAnswer و marks
+  const questionDetailsMap = new Map(
+    questions.map((q) => [q._id.toString(), { correctAnswer: q.correctAnswer, marks: q.marks || 5 }])
+  );
+
+  for (const answer of answers) {
+    const questionId = answer.questionId;
+    const userAnswer = answer.selectedAnswer;
+
+    const question = questionMap.get(questionId.toString());
+    if (!question) continue; // لو السؤال مش في الإمتحان، اتجاهله
+
+    const questionDetails = questionDetailsMap.get(questionId.toString());
+    if (!questionDetails) continue; // لو السؤال مش موجود في الـ Question موديل، اتجاهله
+
+    const isCorrect = userAnswer === questionDetails.correctAnswer;
+    const marks = questionDetails.marks;
+    const score = isCorrect ? marks : 0;
+
+    totalScore += score;
+
+    studentAnswers.push({
+      studentId,
+      examId,
+      questionId,
+      answer: userAnswer,
+      isCorrect,
+      score,
+      marks,
+      createdAt: new Date(),
+    });
   }
-}
 
-export { startExam, calculateScore };
+  await StudentAnswer.insertMany(studentAnswers);
+  return totalScore;
+}

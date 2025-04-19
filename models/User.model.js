@@ -18,7 +18,11 @@ const userSchema = new Schema(
     },
     genderId: { type: Number, default: 1, enum: [1, 2] },
     role: { type: String, default: "student", enum: ["student"] },
-    gradeLevelId: { type: Number, required: true, ref: "GradeLevel" },
+    gradeLevelId: { type: Number, required: true },
+    gradeLevelRef: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "GradeLevel",
+    },
     isConfirmed: { type: Boolean, default: false },
     isDeleted: { type: Boolean, default: false },
     isBlocked: { type: Boolean, default: false },
@@ -27,7 +31,7 @@ const userSchema = new Schema(
     otpexp: Date,
     permanentlyDeleted: Date,
     changeAccountInfo: Date,
-    subjectId: { type: Number, required: true },
+    subjects: [{ type: Number }],
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );

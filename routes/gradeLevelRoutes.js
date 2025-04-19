@@ -16,7 +16,11 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ message: "Grade level already exists." });
     }
 
-    const gradeLevel = new GradeLevel({ name });
+    const gradeLevel = new GradeLevel({
+      name,
+      subjects: [] 
+    });
+    
     await gradeLevel.save();
 
     res.status(201).json({
@@ -68,7 +72,7 @@ router.delete("/:id", async (req, res) => {
       return res.status(404).json({ message: "Grade level not found." });
     }
 
-    await GradeLevel.deleteOne({ gradeLevelId: id });
+    await GradeLevel.deleteOne({ gradeLevel: id });
     res.status(200).json({ message: "Grade level deleted successfully!" });
   } catch (error) {
     console.error("❌ Error deleting grade level:", error.message);

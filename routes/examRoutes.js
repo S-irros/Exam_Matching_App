@@ -1,4 +1,3 @@
-// routes/examRoutes.js
 import express from "express";
 import mongoose from "mongoose";
 import User from "../models/User.model.js";
@@ -6,21 +5,72 @@ import Exam from "../models/examModel.js";
 import ExamRecord from "../models/examRecordModel.js";
 import Question from "../models/questionModel.js";
 import Point from "../models/pointModel.js";
+import Rank from "../models/rankModel.js"; // أضفنا الـ Rank موديل
 import StudentAnswer from "../models/studentAnswerModel.js";
+import { calculateScore } from "../services/examService.js";
 
 const router = express.Router();
+
+// فانكشن لتحديث الرتب
+const updateRanks = async () => {
+  try {
+    console.log("🔍 Fetching points...");
+    const points = await Point.find().sort({ totalPoints: -1 }).lean();
+    console.log("📊 Points found:", points.length, points);
+
+    if (points.length === 0) {
+      console.log("⚠️ No points found, skipping rank update");
+      return;
+    }
+
+    console.log("🔍 Fetching users...");
+    const users = await User.find({ randomId: { $in: points.map(p => p.studentId) } }).lean();
+    console.log("👥 Users found:", users.length, users);
+
+    const userMap = new Map(users.map(u => [u.randomId, u.name]));
+    const ranks = points.map((point, index) => ({
+      studentId: point.studentId,
+      name: userMap.get(point.studentId) || "Unknown",
+      totalPoints: point.totalPoints,
+      rank: index + 1,
+      updatedAt: new Date(),
+    }));
+
+    console.log("🏆 Ranks to be saved:", ranks);
+    console.log("🗑️ Deleting old ranks...");
+    await Rank.deleteMany({});
+    console.log("🗑️ Old ranks deleted");
+    console.log("💾 Inserting new ranks...");
+    await Rank.insertMany(ranks);
+    console.log("💾 Ranks updated in database:", ranks.length, "entries");
+  } catch (error) {
+    console.error("❌ Error updating ranks in updateRanks:", error.message, error.stack);
+    throw error;
+  }
+};
 
 router.post("/start-exam", async (req, res) => {
   const { studentIds, subjectId, gradeLevelId } = req.body;
   console.log("🚀 Received exam start request:", req.body);
 
-  if (!Array.isArray(studentIds) || studentIds.length !== 2 || !subjectId || !gradeLevelId) {
-    return res.status(400).json({ message: "Invalid input. Ensure you provide two student IDs, a subject ID, and a grade level ID." });
+  if (
+    !Array.isArray(studentIds) ||
+    studentIds.length !== 2 ||
+    !subjectId ||
+    !gradeLevelId
+  ) {
+    return res
+      .status(400)
+      .json({
+        message:
+          "Invalid input. Ensure you provide two student IDs, a subject ID, and a grade level ID.",
+      });
   }
 
   try {
     const students = await User.find({ randomId: { $in: studentIds } });
-    if (students.length !== 2) throw new Error("One or both students do not exist.");
+    if (students.length !== 2)
+      throw new Error("One or both students do not exist.");
 
     const studentScores = await Promise.all(
       studentIds.map(async (studentId) => {
@@ -29,11 +79,18 @@ router.post("/start-exam", async (req, res) => {
       })
     );
 
-    const averageScore = studentScores.reduce((sum, student) => sum + student.score, 0) / studentScores.length;
-    let difficultyLevel = averageScore <= 350 ? "easy" : averageScore <= 700 ? "medium" : "hard";
-    console.log(`📊 Average score: ${averageScore}, Difficulty Level: ${difficultyLevel}`);
+    const averageScore =
+      studentScores.reduce((sum, student) => sum + student.score, 0) /
+      studentScores.length;
+    let difficultyLevel =
+      averageScore <= 350 ? "easy" : averageScore <= 700 ? "medium" : "hard";
+    console.log(
+      `📊 Average score: ${averageScore}, Difficulty Level: ${difficultyLevel}`
+    );
 
-    const answeredQuestions = await StudentAnswer.find({ studentId: { $in: studentIds } }).distinct("questionId");
+    const answeredQuestions = await StudentAnswer.find({
+      studentId: { $in: studentIds },
+    }).distinct("questionId");
     let questions = await Question.find({
       subjectId: Number(subjectId),
       gradeLevelId: Number(gradeLevelId),
@@ -41,15 +98,20 @@ router.post("/start-exam", async (req, res) => {
       _id: { $nin: answeredQuestions },
     }).limit(10);
 
-    console.log(`🔍 Found new questions (difficulty: ${difficultyLevel}):`, questions.length);
+    console.log(
+      `🔍 Found new questions (difficulty: ${difficultyLevel}):`,
+      questions.length
+    );
 
     const uniqueQuestions = Array.from(
-      new Map(questions.map(q => [q._id.toString(), q])).values()
+      new Map(questions.map((q) => [q._id.toString(), q])).values()
     );
     questions = uniqueQuestions;
 
     if (questions.length === 0) {
-      throw new Error(`No ${difficultyLevel} questions available for the given subject and grade level.`);
+      throw new Error(
+        `No ${difficultyLevel} questions available for the given subject and grade level.`
+      );
     }
 
     const examQuestions = questions.map((q) => ({
@@ -59,7 +121,11 @@ router.post("/start-exam", async (req, res) => {
       marks: q.marks || 5,
     }));
 
-    const exam = new Exam({ questions: examQuestions, duration: 20 });
+    const exam = new Exam({
+      questions: examQuestions,
+      duration: 20,
+      studentIds: studentIds,
+    });
     await exam.save();
     const examId = exam._id;
 
@@ -72,6 +138,13 @@ router.post("/start-exam", async (req, res) => {
     }));
     await ExamRecord.insertMany(examRecords);
 
+    const studentEmails = students
+      .map((student) => student.email)
+      .join(" and ");
+    console.log(
+      `📚 Exam started for ${studentEmails} with ${examQuestions.length} questions`
+    );
+
     res.status(201).json({
       message: `Exam started successfully for students (${studentIds[0]}, ${studentIds[1]})!`,
       examId: examId.toString(),
@@ -81,87 +154,78 @@ router.post("/start-exam", async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Error starting the exam:", error.message);
-    res.status(500).json({ message: "Error starting the exam.", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Error starting the exam.", error: error.message });
   }
 });
 
 router.get("/update-ranks", async (req, res) => {
   try {
-    const points = await Point.find().sort({ totalPoints: -1 }).lean();
-    const users = await User.find({ randomId: { $in: points.map(p => p.studentId) } }).lean();
-    const userMap = new Map(users.map(u => [u.randomId, u.name]));
-
-    const ranks = points.map((point, index) => ({
-      ...point,
-      name: userMap.get(point.studentId) || "Unknown",
-      rank: index + 1,
-    }));
-
+    await updateRanks(); // استدعي الفانكشن الجديدة
+    const ranks = await Rank.find().lean(); // جيب الرتب من الداتابيز
     res.status(200).json({
       message: "Ranks retrieved successfully!",
       ranks,
     });
   } catch (error) {
     console.error("❌ Error updating ranks:", error.message);
-    res.status(500).json({ message: "Error updating ranks.", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Error updating ranks.", error: error.message });
   }
 });
 
 router.post("/submit-answers", async (req, res) => {
-  const { examId, studentId, answers } = req.body;
-  console.log("🚀 Received submit answers request:", req.body);
+  const { examId, studentId: rawStudentId, answers } = req.body;
 
-  if (!examId || !studentId || !Array.isArray(answers) || answers.length === 0) {
-    return res.status(400).json({ message: "Invalid input. Ensure examId, studentId, and answers are provided." });
-  }
+  console.log("🎯 Running submit-answers from examRoutes.js");
+  console.log("📥 Received submit-answers request:", { examId, studentId: rawStudentId, answers });
+
+  const studentId = Number(rawStudentId);
+  console.log("🚀 Submitting answers for student:", studentId, "exam:", examId);
 
   try {
-    const exam = await Exam.findById(examId);
-    if (!exam) throw new Error("Exam not found.");
+    console.log("🔍 Calculating score...");
+    const totalScore = await calculateScore(examId, studentId, answers);
+    console.log("✅ Calculated score:", totalScore);
 
-    const examQuestions = exam.questions;
-    const questionMap = new Map(examQuestions.map(q => [q.questionId.toString(), q]));
-
-    let totalScore = 0;
-    const studentAnswers = [];
-
-    for (const answer of answers) {
-      const questionId = answer.questionId;
-      const userAnswer = answer.answer;
-
-      const question = await Question.findById(questionId);
-      if (!question) continue;
-
-      const isCorrect = userAnswer === question.correctAnswer;
-      const marks = question.marks || 5;
-
-      totalScore += isCorrect ? marks : 0;
-
-      studentAnswers.push({
-        studentId,
-        questionId,
-        answer: userAnswer,
-        isCorrect,
-        marks,
-        createdAt: new Date(),
-      });
-    }
-
-    await StudentAnswer.insertMany(studentAnswers);
-
+    console.log("🔍 Looking for exam record...");
     const examRecord = await ExamRecord.findOne({ examId, studentId });
     if (examRecord) {
       examRecord.score = totalScore;
       examRecord.updatedAt = new Date();
-      await examRecord.save();
+      try {
+        await examRecord.save();
+        console.log("📝 Updated exam record with score:", totalScore);
+      } catch (error) {
+        console.error("❌ Error saving exam record:", error.message, error.stack);
+        throw error;
+      }
+    } else {
+      console.log("⚠️ Exam record not found for student:", studentId, "exam:", examId);
     }
 
+    console.log("🔍 Looking for point record with studentId:", studentId);
     let point = await Point.findOne({ studentId });
     if (!point) {
+      console.log("🆕 Creating new point entry for student:", studentId);
       point = new Point({ studentId, totalPoints: 0 });
+    } else {
+      console.log("📍 Found existing point:", point);
     }
     point.totalPoints += totalScore;
-    await point.save();
+    try {
+      await point.save();
+      console.log("💾 Updated points for student:", studentId, "New totalPoints:", point.totalPoints);
+    } catch (error) {
+      console.error("❌ Error saving point:", error.message, error.stack);
+      throw error;
+    }
+
+    console.log("🔜 Updating ranks...");
+    await updateRanks();
+    console.log("🔄 Ranks updated after submission for student:", studentId);
 
     res.status(200).json({
       message: "Exam completed! Your score is " + totalScore,
@@ -169,7 +233,7 @@ router.post("/submit-answers", async (req, res) => {
       score: totalScore,
     });
   } catch (error) {
-    console.error("❌ Error submitting answers:", error.message);
+    console.error("❌ Error submitting answers:", error.message, error.stack);
     res.status(500).json({ message: "Error submitting answers.", error: error.message });
   }
 });

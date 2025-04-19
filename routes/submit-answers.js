@@ -1,76 +1,38 @@
-const express = require('express');
-const router = express.Router();
-const Question = require('../model/question');
-const ExamRecord = require('../model/examRecord');
-const Result = require('../model/result');
-const Student = require('../model/student');
+// const express = require('express');
+// const router = express.Router();
+// const ExamRecord = require('../models/examRecordModel.js');
+// const Point = require('../models/pointModel.js');
+// const { calculateScore } = require("../services/examService.js");
 
-router.post('/submit-answers', async (req, res) => {
-  const { studentId, examRecordId, answers } = req.body;
+// router.post("/submit-answers", async (req, res) => {
+//   const { examId, studentId, answers } = req.body;
 
-  try {
-   
-    const student = await Student.findById(studentId);
-    if (!student) {
-      return res.status(404).json({ message: 'Student not found.' });
-    }
+//   try {
+//     const totalScore = await calculateScore(examId, studentId, answers);
 
-   
-    const examRecord = await ExamRecord.findById(examRecordId);
-    if (!examRecord) {
-      return res.status(404).json({ message: 'Exam record not found.' });
-    }
+//     const examRecord = await ExamRecord.findOne({ examId, studentId });
+//     if (examRecord) {
+//       examRecord.score = totalScore;
+//       examRecord.updatedAt = new Date();
+//       await examRecord.save();
+//     }
 
-    console.log('Exam Record:', examRecord); 
+//     let point = await Point.findOne({ studentId });
+//     if (!point) {
+//       point = new Point({ studentId, totalPoints: 0 });
+//     }
+//     point.totalPoints += totalScore;
+//     await point.save();
 
-    
-    const questions = await Question.find({ _id: { $in: examRecord.questionIds } });
+//     res.status(200).json({
+//       message: "Exam completed! Your score is " + totalScore,
+//       examId,
+//       score: totalScore,
+//     });
+//   } catch (error) {
+//     console.error("❌ Error submitting answers:", error.message);
+//     res.status(500).json({ message: "Error submitting answers.", error: error.message });
+//   }
+// });
 
-    
-    let correctAnswersCount = 0;
-    const detailedResults = questions.map((question) => {
-      const studentAnswer = answers.find(ans => ans.questionId === question._id.toString());
-      const isCorrect = studentAnswer && studentAnswer.selectedAnswer === question.correctAnswer;
-
-      if (isCorrect) correctAnswersCount++;
-
-      return {
-        questionText: question.questionText,
-        correctAnswer: question.correctAnswer,
-        studentAnswer: studentAnswer ? studentAnswer.selectedAnswer : 'No Answer',
-        isCorrect
-      };
-    });
-
-    const score = correctAnswersCount * 5;
-
-   
-    const result = new Result({
-      studentId,
-      examId: examRecord.examId,      
-      examRecordId: examRecord._id,
-      score,
-      totalQuestions: questions.length
-    });
-    await result.save();
-
-    
-    student.totalScore += score;
-    await student.save();
-
-    res.json({
-      message: 'Answers submitted successfully!',
-      score,
-      totalScore: student.totalScore,
-      totalQuestions: questions.length,
-      correctAnswers: correctAnswersCount,
-      details: detailedResults
-    });
-
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Error submitting answers.', error: error.message });
-  }
-});
-
-module.exports = router;
+// module.exports = router;

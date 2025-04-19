@@ -1,19 +1,23 @@
-import mongoose, { model, Schema } from "mongoose";
+import mongoose from "mongoose";
 
-const examSchema = new Schema(
-  {
-    questions: [
-      {
-        questionId: { type: mongoose.Schema.Types.ObjectId, ref: "Question" },
-        questionText: String,
-        options: [String],
-        marks: Number,
+const examSchema = new mongoose.Schema({
+  questions: [
+    {
+      questionId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Question",
+        required: true,
       },
-    ],
-    duration: Number,
-  },
-  { timestamps: true }
-);
+      questionText: { type: String, required: true },
+      options: [{ type: String, required: true }],
+      marks: { type: Number, default: 5 },
+    },
+  ],
+  studentIds: [{ type: Number }],
+  duration: { type: Number, required: true },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
+});
 
-const examModel = mongoose.models.Exam || model("Exam", examSchema);
-export default examModel;
+const Exam = mongoose.model("Exam", examSchema);
+export default Exam;
