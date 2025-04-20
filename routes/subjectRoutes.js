@@ -101,9 +101,9 @@ router.delete("/:id", async (req, res) => {
 
 router.get("/", async (req, res) => {
   try {
-    const { gradeLevelId } = req.query.gradeLevelId;
+    const gradeLevelId = req.query.gradeLevelId;
 
-    const mySubjects = await Subject.find(gradeLevelId).populate("gradeLevelRef");
+    const mySubjects = await Subject.find({gradeLevelId}).populate("gradeLevelRef");
 
     res.status(200).json(mySubjects);
   } catch (error) {
