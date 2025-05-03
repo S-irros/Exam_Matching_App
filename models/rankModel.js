@@ -5,6 +5,8 @@ const rankSchema = new mongoose.Schema({
   name: { type: String, required: true },
   totalPoints: { type: Number, required: true, default: 0 },
   rank: { type: Number, required: true },
+  profilePic: { type: String, default: null },
+  profilePicPublicId: { type: String, default: null },
   updatedAt: { type: Date, default: Date.now },
 });
 

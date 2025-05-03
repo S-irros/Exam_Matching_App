@@ -1,39 +1,14 @@
 import express from "express";
-import User from "../models/User.model.js";
 import Point from "../models/pointModel.js";
-import Rank from "../models/rankModel.js"; // أضفنا الـ Rank موديل
+import Rank from "../models/rankModel.js";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
+import verifyToken from "../services/authService.js";
 
 dotenv.config();
 
 const router = express.Router();
 
-// دالة للتحقق من التوكن
-const verifyToken = async (email, token) => {
-  console.log("Received token:", token);
-  try {
-    const signature = process.env.SIGNATURE;
-    const decoded = jwt.verify(token, signature);
-    console.log("Decoded token:", decoded);
-    if (!decoded?.id || !decoded.email || decoded.email !== email) {
-      throw new Error("Invalid token payload: missing id or email mismatch");
-    }
-
-    const user = await User.findOne({ email });
-    if (!user) {
-      console.log("User not found in database for email:", email);
-      throw new Error("User not found in database");
-    }
-
-    return { ...user.toObject(), student_id: user.randomId };
-  } catch (err) {
-    console.error("❌ Token verification error:", err.message);
-    throw new Error(`Token verification failed: ${err.message}`);
-  }
-};
-
-// Middleware للتحقق من التوكن
 const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers["authorization"];
   const token = authHeader && authHeader.split(" ")[1];
@@ -58,12 +33,10 @@ const authenticateToken = async (req, res, next) => {
   }
 };
 
-// روت عرض بروفايل الطالب
 router.get("/student-profile", authenticateToken, async (req, res) => {
-  const { student_id: rawStudentId } = req.user;
+  const { student_id: rawStudentId, name, profilePic, profilePicPublicId } = req.user;
   console.log("Raw studentId from token:", rawStudentId);
 
-  // التأكد من تحويل studentId لـ Number
   const studentId = Number(rawStudentId);
   if (isNaN(studentId)) {
     console.error("❌ Invalid studentId, cannot convert to Number:", rawStudentId);
@@ -73,23 +46,17 @@ router.get("/student-profile", authenticateToken, async (req, res) => {
   console.log("Searching for studentId (as Number):", studentId);
 
   try {
-    // جلب الاسم من جدول User
-    const user = await User.findOne({ randomId: studentId }).lean();
-    if (!user) {
-      return res.status(404).json({ message: "User not found." });
-    }
-
-    // جلب النقاط من جدول Point
     const point = await Point.findOne({ studentId }).lean();
     console.log("Found points for student:", point);
 
-    // جلب الرتبة من جدول Rank
     const rank = await Rank.findOne({ studentId: studentId.toString() }).lean();
     console.log("Found rank for student:", rank);
 
     let profile = {
       studentId: studentId,
-      name: user.name || "Unknown",
+      name: name || "Unknown",
+      profilePic: profilePic || null,
+      profilePicPublicId: profilePicPublicId || null,
       totalPoints: point ? point.totalPoints : 0,
       rank: rank ? rank.rank : null,
     };
