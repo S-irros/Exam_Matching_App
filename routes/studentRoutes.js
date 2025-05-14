@@ -3,7 +3,6 @@ import Student from "../models/User.model.js";
 
 const router = express.Router();
 
-// Create Student
 router.post('/students', async (req, res) => {
     try {
         const { name, email, password, phone, gender, educationLevel } = req.body;

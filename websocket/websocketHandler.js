@@ -5,7 +5,6 @@ import ExamRecord from "../models/examRecordModel.js";
 import Exam from "../models/examModel.js";
 import axios from 'axios';
 
-// تعريف قيم WebSocket readyState يدويًا
 const READY_STATES = {
   CONNECTING: 0,
   OPEN: 1,
@@ -16,6 +15,14 @@ const READY_STATES = {
 const verifiedUsers = new Map();
 const activeStudents = [];
 
+function removeStudentFromQueue(email) {
+  const index = activeStudents.findIndex(student => student.email === email);
+  if (index !== -1) {
+    activeStudents.splice(index, 1);
+    console.log(`Removed ${email} from active students queue`);
+  }
+}
+
 function findMatch(student) {
   console.log("🔍 Finding match for:", student.email, "with data:", {
     subjectId: student.subjectId,
@@ -25,6 +32,7 @@ function findMatch(student) {
   });
   console.log("Current active students:", activeStudents.map(s => ({
     email: s.email,
+    student_id: s.student_id,
     subjectId: s.subjectId,
     gradeLevelId: s.gradeLevelId,
     preferred_gender_id: s.preferred_gender_id,
@@ -33,23 +41,15 @@ function findMatch(student) {
 
   return activeStudents.find(other => {
     const match =
+      other.student_id !== student.student_id &&
       other.email !== student.email &&
       Number(other.subjectId) === Number(student.subjectId) &&
       Number(other.gradeLevelId) === Number(student.gradeLevelId) &&
       (Number(student.preferred_gender_id) === 0 || Number(other.genderId) === Number(student.preferred_gender_id)) &&
       (Number(other.preferred_gender_id) === 0 || Number(student.genderId) === Number(other.preferred_gender_id));
-
-    console.log(`Comparing ${student.email} with ${other.email}:`, match ? "Match found" : "No match");
+    console.log(`Comparing ${student.email} (${student.student_id}) with ${other.email} (${other.student_id}):`, match ? "Match found" : "No match");
     return match;
   });
-}
-
-function removeStudentFromQueue(email) {
-  const index = activeStudents.findIndex(student => student.email === email);
-  if (index !== -1) {
-    activeStudents.splice(index, 1);
-    console.log(`Removed ${email} from active students queue`);
-  }
 }
 
 export default function setupWebSocket(wss) {
@@ -90,7 +90,7 @@ export default function setupWebSocket(wss) {
             student_id: user.student_id,
             subjectId: Number(subjectId),
             gradeLevelId: Number(gradeLevelId),
-            genderId: user.gender, // gender جاي من التوكن كـ Number
+            genderId: user.gender,
             preferred_gender_id: Number(preferred_gender_id),
           };
 

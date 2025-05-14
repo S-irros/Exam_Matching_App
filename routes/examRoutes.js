@@ -5,13 +5,12 @@ import Exam from "../models/examModel.js";
 import ExamRecord from "../models/examRecordModel.js";
 import Question from "../models/questionModel.js";
 import Point from "../models/pointModel.js";
-import Rank from "../models/rankModel.js"; // أضفنا الـ Rank موديل
+import Rank from "../models/rankModel.js";
 import StudentAnswer from "../models/studentAnswerModel.js";
 import { calculateScore } from "../services/examService.js";
 
 const router = express.Router();
 
-// فانكشن لتحديث الرتب
 const updateRanks = async () => {
   try {
     console.log("🔍 Fetching points...");
@@ -162,8 +161,8 @@ router.post("/start-exam", async (req, res) => {
 
 router.get("/update-ranks", async (req, res) => {
   try {
-    await updateRanks(); // استدعي الفانكشن الجديدة
-    const ranks = await Rank.find().lean(); // جيب الرتب من الداتابيز
+    await updateRanks();
+    const ranks = await Rank.find().lean();
     res.status(200).json({
       message: "Ranks retrieved successfully!",
       ranks,
