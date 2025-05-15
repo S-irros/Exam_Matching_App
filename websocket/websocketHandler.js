@@ -30,16 +30,15 @@ function findMatch(student) {
     preferred_gender_id: student.preferred_gender_id,
     genderId: student.genderId,
   });
-  console.log("Current active students:", activeStudents.map(s => ({
-    email: s.email,
-    student_id: s.student_id,
-    subjectId: s.subjectId,
-    gradeLevelId: s.gradeLevelId,
-    preferred_gender_id: s.preferred_gender_id,
-    genderId: s.genderId,
-  })));
 
   return activeStudents.find(other => {
+    const isValidStudent = student.subjectId && student.gradeLevelId && student.genderId !== undefined && student.preferred_gender_id !== undefined;
+    const isValidOther = other.subjectId && other.gradeLevelId && other.genderId !== undefined && other.preferred_gender_id !== undefined;
+    if (!isValidStudent || !isValidOther) {
+      console.log(`❌ Invalid data for ${student.email} or ${other.email}`);
+      return false;
+    }
+
     const match =
       other.student_id !== student.student_id &&
       other.email !== student.email &&
@@ -218,7 +217,7 @@ export default function setupWebSocket(wss) {
       if (ws.email) {
         removeStudentFromQueue(ws.email);
         verifiedUsers.delete(ws.email);
-        console.log(`${ws.email} disconnected and removed from queue`);
+        console.log(`🔴 ${ws.email} disconnected, removed from queue and verifiedUsers`);
       }
     });
   });
