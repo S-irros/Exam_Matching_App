@@ -19,22 +19,12 @@ export async function startExam(student1, student2) {
 
     const { examId, questions, duration } = response.data;
 
-    student1.ws.send(
-      JSON.stringify({
-        type: "exam_started",
-        examId,
-        duration,
-        questions,
-      })
-    );
-    student2.ws.send(
-      JSON.stringify({
-        type: "exam_started",
-        examId,
-        duration,
-        questions,
-      })
-    );
+    if (!examId || !Array.isArray(questions) || !duration) {
+      throw new Error("Invalid exam data received from API");
+    }
+
+    // ترجع البيانات بس من غير إرسال الـ response
+    return { examId, duration, questions };
   } catch (error) {
     console.error("❌ Error starting exam in examService:", error.message);
     throw error;

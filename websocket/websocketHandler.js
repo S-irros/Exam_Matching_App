@@ -3,7 +3,7 @@ import verifyToken from "../services/authService.js";
 import User from "../models/User.model.js";
 import ExamRecord from "../models/examRecordModel.js";
 import Exam from "../models/examModel.js";
-import axios from 'axios';
+import axios from "axios";
 
 const READY_STATES = {
   CONNECTING: 0,
@@ -16,7 +16,7 @@ const verifiedUsers = new Map();
 const activeStudents = [];
 
 function removeStudentFromQueue(email) {
-  const index = activeStudents.findIndex(student => student.email === email);
+  const index = activeStudents.findIndex((student) => student.email === email);
   if (index !== -1) {
     activeStudents.splice(index, 1);
     console.log(`Removed ${email} from active students queue`);
@@ -31,9 +31,17 @@ function findMatch(student) {
     genderId: student.genderId,
   });
 
-  return activeStudents.find(other => {
-    const isValidStudent = student.subjectId && student.gradeLevelId && student.genderId !== undefined && student.preferred_gender_id !== undefined;
-    const isValidOther = other.subjectId && other.gradeLevelId && other.genderId !== undefined && other.preferred_gender_id !== undefined;
+  return activeStudents.find((other) => {
+    const isValidStudent =
+      student.subjectId &&
+      student.gradeLevelId &&
+      student.genderId !== undefined &&
+      student.preferred_gender_id !== undefined;
+    const isValidOther =
+      other.subjectId &&
+      other.gradeLevelId &&
+      other.genderId !== undefined &&
+      other.preferred_gender_id !== undefined;
     if (!isValidStudent || !isValidOther) {
       console.log(`❌ Invalid data for ${student.email} or ${other.email}`);
       return false;
@@ -44,9 +52,14 @@ function findMatch(student) {
       other.email !== student.email &&
       Number(other.subjectId) === Number(student.subjectId) &&
       Number(other.gradeLevelId) === Number(student.gradeLevelId) &&
-      (Number(student.preferred_gender_id) === 0 || Number(other.genderId) === Number(student.preferred_gender_id)) &&
-      (Number(other.preferred_gender_id) === 0 || Number(student.genderId) === Number(other.preferred_gender_id));
-    console.log(`Comparing ${student.email} (${student.student_id}) with ${other.email} (${other.student_id}):`, match ? "Match found" : "No match");
+      (Number(student.preferred_gender_id) === 0 ||
+        Number(other.genderId) === Number(student.preferred_gender_id)) &&
+      (Number(other.preferred_gender_id) === 0 ||
+        Number(student.genderId) === Number(other.preferred_gender_id));
+    console.log(
+      `Comparing ${student.email} (${student.student_id}) with ${other.email} (${other.student_id}):`,
+      match ? "Match found" : "No match"
+    );
     return match;
   });
 }
@@ -66,10 +79,19 @@ export default function setupWebSocket(wss) {
             ws.user = user;
             ws.email = email;
             verifiedUsers.set(email, user);
-            ws.send(JSON.stringify({ message: "✅ Login verified", user: user.name }));
-            console.log("✅ Verified login for:", email, "with student_id:", user.student_id);
+            ws.send(
+              JSON.stringify({ message: "✅ Login verified", user: user.name })
+            );
+            console.log(
+              "✅ Verified login for:",
+              email,
+              "with student_id:",
+              user.student_id
+            );
           } catch (err) {
-            ws.send(JSON.stringify({ message: "❌ Login failed", error: err.message }));
+            ws.send(
+              JSON.stringify({ message: "❌ Login failed", error: err.message })
+            );
             console.log("❌ Login failed for:", email);
           }
           return;
@@ -79,7 +101,22 @@ export default function setupWebSocket(wss) {
           const { email, subjectId, preferred_gender_id, gradeLevelId } = data;
           let user = verifiedUsers.get(email) || ws.user;
           if (!user) {
-            if (ws.readyState === READY_STATES.OPEN) ws.send(JSON.stringify({ message: "❌ Unauthorized request" }));
+            if (ws.readyState === READY_STATES.OPEN)
+              ws.send(JSON.stringify({ message: "❌ Unauthorized request" }));
+            return;
+          }
+
+          // Check if the student is already in an active exam
+          const activeExam = await ExamRecord.findOne({
+            studentId: user.student_id,
+            completed: false,
+          });
+          if (activeExam) {
+            if (ws.readyState === READY_STATES.OPEN)
+              ws.send(
+                JSON.stringify({ message: "❌ You are already in an exam" })
+              );
+            console.log(`❌ ${email} is already in an exam`);
             return;
           }
 
@@ -99,117 +136,280 @@ export default function setupWebSocket(wss) {
           const match = findMatch(studentData);
           if (match) {
             console.log(`✅ Match found between ${email} and ${match.email}`);
-            await startExam(studentData, match);
+
+            // تحقق إضافي للتأكد إن فيه تطابق حقيقي (مش نفس الشخص)
+            if (
+              studentData.student_id === match.student_id ||
+              studentData.email === match.email
+            ) {
+              if (ws.readyState === READY_STATES.OPEN)
+                ws.send(
+                  JSON.stringify({ message: "❌ Cannot match with yourself" })
+                );
+              console.log(`❌ ${email} tried to match with themselves`);
+              return;
+            }
+
+            // بدء الامتحان
+            const examData = await startExam(studentData, match);
+
+            // إذا مفيش بيانات امتحان، يعني فيه مشكلة
+            if (!examData || !examData.examId) {
+              if (ws.readyState === READY_STATES.OPEN)
+                ws.send(JSON.stringify({ message: "❌ Failed to start exam" }));
+              console.log(
+                `❌ Failed to start exam for ${email} and ${match.email}`
+              );
+              return;
+            }
+
+            // جلب بيانات الطالب اللي تم التطابق معاه
+            const matchedUser = await User.findOne({
+              email: match.email,
+            }).lean();
+            if (!matchedUser) {
+              if (ws.readyState === READY_STATES.OPEN)
+                ws.send(
+                  JSON.stringify({ message: "❌ Matched user not found" })
+                );
+              console.log(`❌ Matched user ${match.email} not found`);
+              return;
+            }
+
+            // إعداد بيانات الـ response للطالب الأول
+            const responseForStudent1 = {
+              type: "exam_started",
+              examId: examData.examId,
+              duration: examData.duration || 20, // افتراضي لو مفيش duration
+              questions: examData.questions || [],
+              matchedUser: {
+                name: matchedUser.name || "Unknown",
+                studentId: matchedUser.student_id,
+                gradeLevelId: match.gradeLevelId,
+                subjectId: match.subjectId,
+              },
+            };
+
+            // إعداد بيانات الـ response للطالب الثاني (اللي تم التطابق معاه)
+            const responseForStudent2 = {
+              type: "exam_started",
+              examId: examData.examId,
+              duration: examData.duration || 20,
+              questions: examData.questions || [],
+              matchedUser: {
+                name: user.name || "Unknown",
+                studentId: user.student_id,
+                gradeLevelId: studentData.gradeLevelId,
+                subjectId: studentData.subjectId,
+              },
+            };
+
+            // إزالة الطلاب من قائمة activeStudents
             removeStudentFromQueue(email);
             removeStudentFromQueue(match.email);
-            if (studentData.ws.readyState === READY_STATES.OPEN) studentData.ws.send(JSON.stringify({ message: "⏳ Starting the exam..." }));
-            if (match.ws.readyState === READY_STATES.OPEN) match.ws.send(JSON.stringify({ message: "⏳ Starting the exam..." }));
+
+            // إرسال الـ response للطالب الأول
+            if (studentData.ws.readyState === READY_STATES.OPEN)
+              studentData.ws.send(JSON.stringify(responseForStudent1));
+
+            // إرسال الـ response للطالب الثاني
+            if (match.ws.readyState === READY_STATES.OPEN)
+              match.ws.send(JSON.stringify(responseForStudent2));
+
+            console.log(
+              `✅ Exam started for ${email} and ${match.email} with examId: ${examData.examId}`
+            );
           } else {
-            if (ws.readyState === READY_STATES.OPEN) ws.send(JSON.stringify({ message: "🔍 Waiting for match..." }));
+            if (ws.readyState === READY_STATES.OPEN)
+              ws.send(JSON.stringify({ message: "🔍 Waiting for match..." }));
           }
         }
 
         if (data.type === "submit_answers") {
           const { examId, studentId, answers, email } = data;
-          if (!examId || !studentId || !answers || !Array.isArray(answers) || !email) {
+          if (
+            !examId ||
+            !studentId ||
+            !answers ||
+            !Array.isArray(answers) ||
+            !email
+          ) {
             if (ws.readyState === READY_STATES.OPEN) {
-              ws.send(JSON.stringify({ message: "❌ Invalid answers format: Missing examId, studentId, answers, or email" }));
+              ws.send(
+                JSON.stringify({
+                  message:
+                    "❌ Invalid answers format: Missing examId, studentId, answers, or email",
+                })
+              );
             }
             return;
           }
-        
-          let user = verifiedUsers.get(email) || (await User.findOne({ email })?.toObject());
+
+          let user =
+            verifiedUsers.get(email) ||
+            (await User.findOne({ email })?.toObject());
           if (!user) {
             if (ws.readyState === READY_STATES.OPEN) {
-              ws.send(JSON.stringify({ message: "❌ Unauthorized: Please verify login first" }));
+              ws.send(
+                JSON.stringify({
+                  message: "❌ Unauthorized: Please verify login first",
+                })
+              );
             }
-            console.log(`❌ Unauthorized attempt to submit answers by student ${studentId} (email: ${email})`);
+            console.log(
+              `❌ Unauthorized attempt to submit answers by student ${studentId} (email: ${email})`
+            );
             return;
           }
           if (Number(user.student_id) !== Number(studentId)) {
             if (ws.readyState === READY_STATES.OPEN) {
-              ws.send(JSON.stringify({ message: "❌ Unauthorized: Student ID does not match verified user" }));
+              ws.send(
+                JSON.stringify({
+                  message:
+                    "❌ Unauthorized: Student ID does not match verified user",
+                })
+              );
             }
-            console.log(`❌ Student ID mismatch: ${studentId} does not match verified user ${user.student_id} (email: ${email})`);
+            console.log(
+              `❌ Student ID mismatch: ${studentId} does not match verified user ${user.student_id} (email: ${email})`
+            );
             return;
           }
-        
+
           const userExists = await User.findOne({ randomId: studentId });
           if (!userExists) {
             if (ws.readyState === READY_STATES.OPEN) {
-              ws.send(JSON.stringify({ message: "❌ User not found in the database" }));
+              ws.send(
+                JSON.stringify({ message: "❌ User not found in the database" })
+              );
             }
             console.log(`❌ User ${studentId} not found in users table`);
             return;
           }
-        
+
           const exam = await Exam.findById(examId);
           if (!exam || !exam.studentIds.includes(studentId)) {
             if (ws.readyState === READY_STATES.OPEN) {
-              ws.send(JSON.stringify({ message: "❌ Unauthorized: You did not participate in this exam" }));
+              ws.send(
+                JSON.stringify({
+                  message:
+                    "❌ Unauthorized: You did not participate in this exam",
+                })
+              );
             }
-            console.log(`❌ User ${studentId} did not participate in exam ${examId}`);
+            console.log(
+              `❌ User ${studentId} did not participate in exam ${examId}`
+            );
             return;
           }
-        
+
           const examRecord = await ExamRecord.findOne({ examId, studentId });
           if (!examRecord) {
             if (ws.readyState === READY_STATES.OPEN) {
-              ws.send(JSON.stringify({ message: "❌ Unauthorized: No exam record found for this user" }));
+              ws.send(
+                JSON.stringify({
+                  message:
+                    "❌ Unauthorized: No exam record found for this user",
+                })
+              );
             }
-            console.log(`❌ No exam record for user ${studentId} in exam ${examId}`);
+            console.log(
+              `❌ No exam record for user ${studentId} in exam ${examId}`
+            );
             return;
           }
-        
-          const existingRecord = await ExamRecord.findOne({ examId, studentId, score: { $gt: 0 } });
+
+          const existingRecord = await ExamRecord.findOne({
+            examId,
+            studentId,
+            score: { $gt: 0 },
+          });
           if (existingRecord) {
             if (ws.readyState === READY_STATES.OPEN) {
-              ws.send(JSON.stringify({
-                type: "exam_results",
-                examId,
-                score: existingRecord.score,
-                message: "لقد أجبت على هذا الإمتحان من قبل! درجتك السابقة محفوظة.",
-              }));
+              ws.send(
+                JSON.stringify({
+                  type: "exam_results",
+                  examId,
+                  score: existingRecord.score,
+                  message:
+                    "لقد أجبت على هذا الإمتحان من قبل! درجتك السابقة محفوظة.",
+                })
+              );
             }
-            console.log(`⚠️ User ${studentId} already submitted exam ${examId}`);
+            console.log(
+              `⚠️ User ${studentId} already submitted exam ${examId}`
+            );
             return;
           }
-        
-          console.log(`📝 Received answers from user ${studentId} for exam ${examId}`);
+
+          console.log(
+            `📝 Received answers from user ${studentId} for exam ${examId}`
+          );
           try {
             // ابعت طلب POST لـ /api/exams/submit-answers
-            const response = await axios.post('http://localhost:8080/api/exams/submit-answers', {
-              examId,
-              studentId,
-              answers,
-              email
-            });
-            const { score, message } = response.data;
-        
-            if (ws.readyState === READY_STATES.OPEN) {
-              ws.send(JSON.stringify({
-                type: "exam_results",
+            const response = await axios.post(
+              "http://localhost:8080/api/exams/submit-answers",
+              {
                 examId,
-                score,
-                message
-              }));
+                studentId,
+                answers,
+                email,
+              }
+            );
+            const { score, message } = response.data;
+
+            // تحديث حالة ExamRecord لتكون completed
+            examRecord.completed = true;
+            examRecord.score = score;
+            await examRecord.save();
+            console.log(
+              `✅ Updated ExamRecord for user ${studentId} in exam ${examId} as completed with score: ${score}`
+            );
+
+            // إزالة الطالب من activeStudents
+            removeStudentFromQueue(email);
+            console.log(
+              `✅ Removed ${email} from activeStudents after submitting answers`
+            );
+
+            if (ws.readyState === READY_STATES.OPEN) {
+              ws.send(
+                JSON.stringify({
+                  type: "exam_results",
+                  examId,
+                  score,
+                  message,
+                })
+              );
             }
             console.log(`✅ Score calculated for user ${studentId}: ${score}`);
           } catch (error) {
-            console.error(`❌ Error submitting answers for user ${studentId}:`, error.message, error.stack);
+            console.error(
+              `❌ Error submitting answers for user ${studentId}:`,
+              error.message,
+              error.stack
+            );
             if (ws.readyState === READY_STATES.OPEN) {
-              ws.send(JSON.stringify({
-                type: "exam_results",
-                examId,
-                score: 0,
-                message: `❌ Error submitting answers: ${error.message}`
-              }));
+              ws.send(
+                JSON.stringify({
+                  type: "exam_results",
+                  examId,
+                  score: 0,
+                  message: `❌ Error submitting answers: ${error.message}`,
+                })
+              );
             }
           }
         }
       } catch (err) {
-        console.error("❌ Error handling message:", err.message);
-        if (ws.readyState === READY_STATES.OPEN) ws.send(JSON.stringify({ message: "❌ Invalid request format" }));
+        console.error(
+          "❌ Failed to parse message:",
+          err.message,
+          "Received:",
+          message.toString()
+        );
+        if (ws.readyState === READY_STATES.OPEN)
+          ws.send(JSON.stringify({ message: "❌ Invalid request format" }));
       }
     });
 
@@ -217,7 +417,9 @@ export default function setupWebSocket(wss) {
       if (ws.email) {
         removeStudentFromQueue(ws.email);
         verifiedUsers.delete(ws.email);
-        console.log(`🔴 ${ws.email} disconnected, removed from queue and verifiedUsers`);
+        console.log(
+          `🔴 ${ws.email} disconnected, removed from queue and verifiedUsers`
+        );
       }
     });
   });
