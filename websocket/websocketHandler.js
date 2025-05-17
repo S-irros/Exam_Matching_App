@@ -176,11 +176,14 @@ export default function setupWebSocket(wss) {
               return;
             }
 
+            // توليد uniqueChannelName باستخدام examId و student_id
+            const uniqueChannelName = `voice_channel_${examData.examId}_${studentData.student_id}_${match.student_id}`;
+
             // إعداد بيانات الـ response للطالب الأول
             const responseForStudent1 = {
               type: "exam_started",
               examId: examData.examId,
-              duration: examData.duration || 20, // افتراضي لو مفيش duration
+              duration: examData.duration || 20,
               questions: examData.questions || [],
               matchedUser: {
                 name: matchedUser.name || "Unknown",
@@ -188,9 +191,10 @@ export default function setupWebSocket(wss) {
                 gradeLevelId: match.gradeLevelId,
                 subjectId: match.subjectId,
               },
+              uniqueChannelName: uniqueChannelName, // إضافة الـ uniqueChannelName
             };
 
-            // إعداد بيانات الـ response للطالب الثاني (اللي تم التطابق معاه)
+            // إعداد بيانات الـ response للطالب الثاني
             const responseForStudent2 = {
               type: "exam_started",
               examId: examData.examId,
@@ -202,6 +206,7 @@ export default function setupWebSocket(wss) {
                 gradeLevelId: studentData.gradeLevelId,
                 subjectId: studentData.subjectId,
               },
+              uniqueChannelName: uniqueChannelName, // نفس الـ uniqueChannelName
             };
 
             // إزالة الطلاب من قائمة activeStudents
@@ -217,7 +222,7 @@ export default function setupWebSocket(wss) {
               match.ws.send(JSON.stringify(responseForStudent2));
 
             console.log(
-              `✅ Exam started for ${email} and ${match.email} with examId: ${examData.examId}`
+              `✅ Exam started for ${email} and ${match.email} with examId: ${examData.examId} and channel: ${uniqueChannelName}`
             );
           } else {
             if (ws.readyState === READY_STATES.OPEN)
