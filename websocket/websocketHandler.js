@@ -69,30 +69,45 @@ export default function setupWebSocket(wss) {
     console.log("🟢 New WebSocket connection");
 
     ws.on("message", async (message) => {
+      console.log("📩 Received raw message:", message.toString());
       try {
         const data = JSON.parse(message);
+        console.log("✅ Parsed message:", data);
 
         if (data.type === "verify_login") {
           const { email, token } = data;
+          console.log("🔍 Attempting to verify login for:", email);
           try {
             const user = await verifyToken(email, token);
             ws.user = user;
             ws.email = email;
             verifiedUsers.set(email, user);
-            ws.send(
-              JSON.stringify({ message: "✅ Login verified", user: user.name })
-            );
-            console.log(
-              "✅ Verified login for:",
-              email,
-              "with student_id:",
-              user.student_id
-            );
+            if (ws.readyState === READY_STATES.OPEN) {
+              ws.send(
+                JSON.stringify({
+                  message: "✅ Login verified",
+                  user: user.name,
+                })
+              );
+              console.log(
+                "✅ Verified login for:",
+                email,
+                "student_id:",
+                user.student_id
+              );
+            } else {
+              console.log("⚠️ WebSocket not open, state:", ws.readyState);
+            }
           } catch (err) {
-            ws.send(
-              JSON.stringify({ message: "❌ Login failed", error: err.message })
-            );
-            console.log("❌ Login failed for:", email);
+            console.error("❌ Login error for:", email, "Error:", err.message);
+            if (ws.readyState === READY_STATES.OPEN) {
+              ws.send(
+                JSON.stringify({
+                  message: "❌ Login failed",
+                  error: err.message,
+                })
+              );
+            }
           }
           return;
         }
@@ -106,7 +121,6 @@ export default function setupWebSocket(wss) {
             return;
           }
 
-          // Check if the student is already in an active exam
           const activeExam = await ExamRecord.findOne({
             studentId: user.student_id,
             completed: false,
@@ -137,7 +151,6 @@ export default function setupWebSocket(wss) {
           if (match) {
             console.log(`✅ Match found between ${email} and ${match.email}`);
 
-            // تحقق إضافي للتأكد إن فيه تطابق حقيقي (مش نفس الشخص)
             if (
               studentData.student_id === match.student_id ||
               studentData.email === match.email
@@ -150,10 +163,8 @@ export default function setupWebSocket(wss) {
               return;
             }
 
-            // بدء الامتحان
             const examData = await startExam(studentData, match);
 
-            // إذا مفيش بيانات امتحان، يعني فيه مشكلة
             if (!examData || !examData.examId) {
               if (ws.readyState === READY_STATES.OPEN)
                 ws.send(JSON.stringify({ message: "❌ Failed to start exam" }));
@@ -163,7 +174,6 @@ export default function setupWebSocket(wss) {
               return;
             }
 
-            // جلب بيانات الطالب اللي تم التطابق معاه
             const matchedUser = await User.findOne({
               email: match.email,
             }).lean();
@@ -176,10 +186,8 @@ export default function setupWebSocket(wss) {
               return;
             }
 
-            // توليد uniqueChannelName باستخدام examId و student_id
             const uniqueChannelName = `voice_channel_${examData.examId}_${studentData.student_id}_${match.student_id}`;
 
-            // إعداد بيانات الـ response للطالب الأول
             const responseForStudent1 = {
               type: "exam_started",
               examId: examData.examId,
@@ -191,10 +199,9 @@ export default function setupWebSocket(wss) {
                 gradeLevelId: match.gradeLevelId,
                 subjectId: match.subjectId,
               },
-              uniqueChannelName: uniqueChannelName, // إضافة الـ uniqueChannelName
+              uniqueChannelName: uniqueChannelName,
             };
 
-            // إعداد بيانات الـ response للطالب الثاني
             const responseForStudent2 = {
               type: "exam_started",
               examId: examData.examId,
@@ -206,18 +213,15 @@ export default function setupWebSocket(wss) {
                 gradeLevelId: studentData.gradeLevelId,
                 subjectId: studentData.subjectId,
               },
-              uniqueChannelName: uniqueChannelName, // نفس الـ uniqueChannelName
+              uniqueChannelName: uniqueChannelName,
             };
 
-            // إزالة الطلاب من قائمة activeStudents
             removeStudentFromQueue(email);
             removeStudentFromQueue(match.email);
 
-            // إرسال الـ response للطالب الأول
             if (studentData.ws.readyState === READY_STATES.OPEN)
               studentData.ws.send(JSON.stringify(responseForStudent1));
 
-            // إرسال الـ response للطالب الثاني
             if (match.ws.readyState === READY_STATES.OPEN)
               match.ws.send(JSON.stringify(responseForStudent2));
 
@@ -351,7 +355,6 @@ export default function setupWebSocket(wss) {
             `📝 Received answers from user ${studentId} for exam ${examId}`
           );
           try {
-            // ابعت طلب POST لـ /api/exams/submit-answers
             const response = await axios.post(
               "http://localhost:8080/api/exams/submit-answers",
               {
@@ -363,7 +366,6 @@ export default function setupWebSocket(wss) {
             );
             const { score, message } = response.data;
 
-            // تحديث حالة ExamRecord لتكون completed
             examRecord.completed = true;
             examRecord.score = score;
             await examRecord.save();
@@ -371,7 +373,6 @@ export default function setupWebSocket(wss) {
               `✅ Updated ExamRecord for user ${studentId} in exam ${examId} as completed with score: ${score}`
             );
 
-            // إزالة الطالب من activeStudents
             removeStudentFromQueue(email);
             console.log(
               `✅ Removed ${email} from activeStudents after submitting answers`
@@ -384,6 +385,7 @@ export default function setupWebSocket(wss) {
                   examId,
                   score,
                   message,
+                  questions: response.data.questions,
                 })
               );
             }

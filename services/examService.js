@@ -11,11 +11,14 @@ export async function startExam(student1, student2) {
     const subjectId = student1.subjectId;
     const gradeLevelId = student1.gradeLevelId;
 
-    const response = await axios.post("http://localhost:8080/api/exams/start-exam", {
-      studentIds,
-      subjectId,
-      gradeLevelId,
-    });
+    const response = await axios.post(
+      "http://localhost:8080/api/exams/start-exam",
+      {
+        studentIds,
+        subjectId,
+        gradeLevelId,
+      }
+    );
 
     const { examId, questions, duration } = response.data;
 
@@ -23,7 +26,6 @@ export async function startExam(student1, student2) {
       throw new Error("Invalid exam data received from API");
     }
 
-    // ترجع البيانات بس من غير إرسال الـ response
     return { examId, duration, questions };
   } catch (error) {
     console.error("❌ Error starting exam in examService:", error.message);
@@ -36,18 +38,28 @@ export async function calculateScore(examId, studentId, answers) {
   if (!exam) throw new Error("Exam not found");
 
   const examQuestions = exam.questions;
-  const questionMap = new Map(examQuestions.map((q) => [q.questionId.toString(), q]));
+  const questionMap = new Map(
+    examQuestions.map((q) => [q.questionId.toString(), q])
+  );
 
   let totalScore = 0;
   const studentAnswers = [];
+  const responseDetails = [];
 
-  // جيب كل الأسئلة مرة واحدة عشان الأداء
   const questionIds = answers.map((answer) => answer.questionId);
-  const questions = await Question.find({ _id: { $in: questionIds } }).select("correctAnswer marks");
+  const questions = await Question.find({ _id: { $in: questionIds } }).select(
+    "correctAnswer marks questionText"
+  );
 
-  // اعمل ماب للـ questionId مع الـ correctAnswer و marks
   const questionDetailsMap = new Map(
-    questions.map((q) => [q._id.toString(), { correctAnswer: q.correctAnswer, marks: q.marks || 5 }])
+    questions.map((q) => [
+      q._id.toString(),
+      {
+        correctAnswer: q.correctAnswer,
+        marks: q.marks || 5,
+        questionText: q.questionText,
+      },
+    ])
   );
 
   for (const answer of answers) {
@@ -55,10 +67,10 @@ export async function calculateScore(examId, studentId, answers) {
     const userAnswer = answer.selectedAnswer;
 
     const question = questionMap.get(questionId.toString());
-    if (!question) continue; // لو السؤال مش في الإمتحان، اتجاهله
+    if (!question) continue;
 
     const questionDetails = questionDetailsMap.get(questionId.toString());
-    if (!questionDetails) continue; // لو السؤال مش موجود في الـ Question موديل، اتجاهله
+    if (!questionDetails) continue;
 
     const isCorrect = userAnswer === questionDetails.correctAnswer;
     const marks = questionDetails.marks;
@@ -76,8 +88,16 @@ export async function calculateScore(examId, studentId, answers) {
       marks,
       createdAt: new Date(),
     });
+
+    const questionResponse = {
+      questionText: questionDetails.questionText,
+      selectedAnswer: userAnswer,
+      correctAnswer: questionDetails.correctAnswer,
+      isCorrect,
+    };
+    responseDetails.push(questionResponse);
   }
 
   await StudentAnswer.insertMany(studentAnswers);
-  return totalScore;
+  return { totalScore, responseDetails };
 }

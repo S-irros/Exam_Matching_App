@@ -178,61 +178,52 @@ router.get("/update-ranks", async (req, res) => {
 router.post("/submit-answers", async (req, res) => {
   const { examId, studentId: rawStudentId, answers } = req.body;
 
-  console.log("🎯 Running submit-answers from examRoutes.js");
-  console.log("📥 Received submit-answers request:", { examId, studentId: rawStudentId, answers });
+  console.log("🎯 Running submit-answers");
+  console.log("📥 Received:", { examId, studentId: rawStudentId });
 
   const studentId = Number(rawStudentId);
-  console.log("🚀 Submitting answers for student:", studentId, "exam:", examId);
+  console.log("🚀 Submitting for student:", studentId, "exam:", examId);
 
   try {
     console.log("🔍 Calculating score...");
-    const totalScore = await calculateScore(examId, studentId, answers);
-    console.log("✅ Calculated score:", totalScore);
+    const { totalScore, responseDetails } = await calculateScore(examId, studentId, answers);
+    console.log("Response details:", responseDetails);
+    console.log("✅ Score:", totalScore);
 
     console.log("🔍 Looking for exam record...");
     const examRecord = await ExamRecord.findOne({ examId, studentId });
     if (examRecord) {
       examRecord.score = totalScore;
       examRecord.updatedAt = new Date();
-      try {
-        await examRecord.save();
-        console.log("📝 Updated exam record with score:", totalScore);
-      } catch (error) {
-        console.error("❌ Error saving exam record:", error.message, error.stack);
-        throw error;
-      }
+      await examRecord.save();
+      console.log("📝 Updated exam record:", totalScore);
     } else {
-      console.log("⚠️ Exam record not found for student:", studentId, "exam:", examId);
+      console.log("⚠️ Exam record not found:", studentId, examId);
     }
 
-    console.log("🔍 Looking for point record with studentId:", studentId);
+    console.log("🔍 Looking for point record:", studentId);
     let point = await Point.findOne({ studentId });
     if (!point) {
-      console.log("🆕 Creating new point entry for student:", studentId);
+      console.log("🆕 Creating new point entry:", studentId);
       point = new Point({ studentId, totalPoints: 0 });
-    } else {
-      console.log("📍 Found existing point:", point);
     }
     point.totalPoints += totalScore;
-    try {
-      await point.save();
-      console.log("💾 Updated points for student:", studentId, "New totalPoints:", point.totalPoints);
-    } catch (error) {
-      console.error("❌ Error saving point:", error.message, error.stack);
-      throw error;
-    }
+    await point.save();
+    console.log("💾 Updated points:", point.totalPoints);
 
     console.log("🔜 Updating ranks...");
     await updateRanks();
-    console.log("🔄 Ranks updated after submission for student:", studentId);
+    console.log("🔄 Ranks updated");
 
     res.status(200).json({
-      message: "Exam completed! Your score is " + totalScore,
+      type: "exam_results",
       examId,
       score: totalScore,
+      message: "Exam completed! Your score is " + totalScore,
+      questions: responseDetails,
     });
   } catch (error) {
-    console.error("❌ Error submitting answers:", error.message, error.stack);
+    console.error("❌ Error:", error.message);
     res.status(500).json({ message: "Error submitting answers.", error: error.message });
   }
 });

@@ -1,11 +1,15 @@
 import jwt from "jsonwebtoken";
 
 async function verifyToken(email, token) {
-  console.log("Received token:", token);
+  console.log("🔍 Verifying token for email:", email, "Token start:", token.slice(0, 20) + "...");
   try {
     const signature = process.env.SIGNATURE;
-    const decoded = jwt.verify(token, signature);
-    console.log("Decoded token:", decoded);
+    if (!signature) {
+      throw new Error("SIGNATURE environment variable not set");
+    }
+
+    const decoded = jwt.verify(token, signature, { ignoreExpiration: false });
+    console.log("✅ Decoded token:", decoded);
 
     if (!decoded?.id || !decoded.email || decoded.email !== email) {
       throw new Error("Invalid token payload: missing id or email mismatch");
@@ -29,7 +33,7 @@ async function verifyToken(email, token) {
       profilePicPublicId: decoded.profilePicPublicId,
     };
   } catch (err) {
-    console.error("❌ Token verification error:", err.message);
+    console.error("❌ Token verification error:", err.message, "Error type:", err.name, "Stack:", err.stack);
     throw new Error(`Token verification failed: ${err.message}`);
   }
 }
