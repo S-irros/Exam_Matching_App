@@ -556,32 +556,34 @@ export default function setupWebSocket(wss) {
   function monitorConnection(ws, email) {
     let pingTimeout = null;
 
-    // إرسال Ping كل 10 ثواني
     const pingInterval = setInterval(() => {
       if (ws.readyState === READY_STATES.OPEN) {
-        ws.ping(); // استخدام WebSocket.ping() لو مدعوم، أو إرسال رسالة مخصصة
-        console.log(`📡 Sent Ping to ${email}`);
-
-        // إعداد Timeout لـ Pong
-        pingTimeout = setTimeout(() => {
-          console.log(`⏰ No Pong from ${email}, assuming disconnection`);
-          removeStudentFromQueue(email);
+        // تحقق إذا كان الطالب في activeStudents
+        if (activeStudents.some((s) => s.email === email)) {
+          ws.ping();
+          console.log(`📡 Sent Ping to ${email}`);
+          pingTimeout = setTimeout(() => {
+            console.log(`⏰ No Pong from ${email}, assuming disconnection`);
+            removeStudentFromQueue(email);
+            clearInterval(pingInterval);
+            clearTimeout(pingTimeout);
+          }, 3000); // 3 ثواني
+        } else {
+          console.log(`⚠️ ${email} not in activeStudents, stopping ping`);
           clearInterval(pingInterval);
           clearTimeout(pingTimeout);
-        }, 5000); // 5 ثواني للرد
+        }
       } else {
         clearInterval(pingInterval);
         clearTimeout(pingTimeout);
       }
-    }, 10000); // كل 10 ثواني
+    }, 5000); // 5 ثواني
 
-    // الرد على Pong
     ws.on("pong", () => {
       console.log(`🏓 Received Pong from ${email}`);
-      clearTimeout(pingTimeout); // إلغاء الـ Timeout لو جاء الرد
+      clearTimeout(pingTimeout);
     });
 
-    // تنظيف عند إغلاق الاتصال
     ws.on("close", () => {
       clearInterval(pingInterval);
       clearTimeout(pingTimeout);
@@ -589,7 +591,7 @@ export default function setupWebSocket(wss) {
   }
 
   wss.on("connection", (ws) => {
-    console.log("🟢 New WebSocket connection");
+    console.log(`🟢 New WebSocket connection for ${ws.email || 'unknown'}`);
 
     ws.on("message", async (message) => {
       console.log("📩 Received raw message:", message.toString());
@@ -644,16 +646,12 @@ export default function setupWebSocket(wss) {
             return;
           }
 
-          const activeExam = await ExamRecord.findOne({
-            studentId: user.student_id,
-            completed: false,
-          });
-          if (activeExam) {
+          if (activeStudents.some((s) => s.email === email)) {
             if (ws.readyState === READY_STATES.OPEN)
               ws.send(
-                JSON.stringify({ message: "❌ You are already in an exam" })
+                JSON.stringify({ message: "❌ Already in matchmaking queue" })
               );
-            console.log(`❌ ${email} is already in an exam`);
+            console.log(`⚠️ ${email} tried to join queue again`);
             return;
           }
 
@@ -1000,7 +998,8 @@ export default function setupWebSocket(wss) {
         console.log(
           `🔴 ${ws.email} disconnected, code: ${code}, reason: ${
             reason || "No reason provided"
-          }, removed from queue and verifiedUsers`
+          }, removed from queue and verifiedUsers. activeStudents:`,
+          activeStudents.map((s) => s.email)
         );
       }
     });
