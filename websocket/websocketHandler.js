@@ -32,30 +32,35 @@ function findMatch(student) {
   });
 
   return activeStudents.find((other) => {
+    // تحقق أكثر دقة
     const isValidStudent =
-      student.subjectId &&
-      student.gradeLevelId &&
-      student.genderId !== undefined &&
-      student.preferred_gender_id !== undefined;
+      typeof student.subjectId === "number" &&
+      typeof student.gradeLevelId === "number" &&
+      typeof student.genderId === "number" &&
+      typeof student.preferred_gender_id === "number";
     const isValidOther =
-      other.subjectId &&
-      other.gradeLevelId &&
-      other.genderId !== undefined &&
-      other.preferred_gender_id !== undefined;
+      typeof other.subjectId === "number" &&
+      typeof other.gradeLevelId === "number" &&
+      typeof other.genderId === "number" &&
+      typeof other.preferred_gender_id === "number";
+
     if (!isValidStudent || !isValidOther) {
-      console.log(`❌ Invalid data for ${student.email} or ${other.email}`);
+      console.log(`❌ Invalid data for ${student.email} أو ${other.email}`, {
+        studentData: student,
+        otherData: other,
+      });
       return false;
     }
 
     const match =
       other.student_id !== student.student_id &&
       other.email !== student.email &&
-      Number(other.subjectId) === Number(student.subjectId) &&
-      Number(other.gradeLevelId) === Number(student.gradeLevelId) &&
-      (Number(student.preferred_gender_id) === 0 ||
-        Number(other.genderId) === Number(student.preferred_gender_id)) &&
-      (Number(other.preferred_gender_id) === 0 ||
-        Number(student.genderId) === Number(other.preferred_gender_id));
+      other.subjectId === student.subjectId &&
+      other.gradeLevelId === student.gradeLevelId &&
+      (student.preferred_gender_id === 0 ||
+        other.genderId === student.preferred_gender_id) &&
+      (other.preferred_gender_id === 0 ||
+        student.genderId === other.preferred_gender_id);
     console.log(
       `Comparing ${student.email} (${student.student_id}) with ${other.email} (${other.student_id}):`,
       match ? "Match found" : "No match"
@@ -147,91 +152,124 @@ export default function setupWebSocket(wss) {
           activeStudents.push(studentData);
           console.log(`Added ${email} to active students queue`);
 
-          const match = findMatch(studentData);
-          if (match) {
-            console.log(`✅ Match found between ${email} and ${match.email}`);
+          const tryMatching = async () => {
+            const match = findMatch(studentData);
+            if (match) {
+              console.log(`✅ Match found between ${email} و ${match.email}`);
+              if (
+                studentData.student_id === match.student_id ||
+                studentData.email === match.email
+              ) {
+                if (ws.readyState === READY_STATES.OPEN)
+                  ws.send(
+                    JSON.stringify({ message: "❌ Cannot match with yourself" })
+                  );
+                console.log(`❌ ${email} tried to match with themselves`);
+                removeStudentFromQueue(email);
+                return;
+              }
 
-            if (
-              studentData.student_id === match.student_id ||
-              studentData.email === match.email
-            ) {
-              if (ws.readyState === READY_STATES.OPEN)
-                ws.send(
-                  JSON.stringify({ message: "❌ Cannot match with yourself" })
+              const examData = await startExam(studentData, match);
+              if (!examData || !examData.examId) {
+                if (ws.readyState === READY_STATES.OPEN)
+                  ws.send(
+                    JSON.stringify({ message: "❌ Failed to start exam" })
+                  );
+                console.log(
+                  `❌ Failed to start exam for ${email} and ${match.email}`
                 );
-              console.log(`❌ ${email} tried to match with themselves`);
-              return;
-            }
+                removeStudentFromQueue(email);
+                return;
+              }
 
-            const examData = await startExam(studentData, match);
+              const matchedUser = await User.findOne({
+                email: match.email,
+              }).lean();
+              if (!matchedUser) {
+                if (ws.readyState === READY_STATES.OPEN)
+                  ws.send(
+                    JSON.stringify({ message: "❌ Matched user not found" })
+                  );
+                console.log(`❌ Matched user ${match.email} not found`);
+                removeStudentFromQueue(email);
+                return;
+              }
 
-            if (!examData || !examData.examId) {
-              if (ws.readyState === READY_STATES.OPEN)
-                ws.send(JSON.stringify({ message: "❌ Failed to start exam" }));
+              const uniqueChannelName = `voice_channel_${examData.examId}_${studentData.student_id}_${match.student_id}`;
+
+              const responseForStudent1 = {
+                type: "exam_started",
+                examId: examData.examId,
+                duration: examData.duration || 20,
+                questions: examData.questions || [],
+                matchedUser: {
+                  name: matchedUser.name || "Unknown",
+                  studentId: matchedUser.student_id,
+                  gradeLevelId: match.gradeLevelId,
+                  subjectId: match.subjectId,
+                },
+                uniqueChannelName: uniqueChannelName,
+              };
+
+              const responseForStudent2 = {
+                type: "exam_started",
+                examId: examData.examId,
+                duration: examData.duration || 20,
+                questions: examData.questions || [],
+                matchedUser: {
+                  name: user.name || "Unknown",
+                  studentId: user.student_id,
+                  gradeLevelId: studentData.gradeLevelId,
+                  subjectId: studentData.subjectId,
+                },
+                uniqueChannelName: uniqueChannelName,
+              };
+
+              removeStudentFromQueue(email);
+              removeStudentFromQueue(match.email);
+
+              if (studentData.ws.readyState === READY_STATES.OPEN)
+                studentData.ws.send(JSON.stringify(responseForStudent1));
+              if (match.ws.readyState === READY_STATES.OPEN)
+                match.ws.send(JSON.stringify(responseForStudent2));
+
               console.log(
-                `❌ Failed to start exam for ${email} and ${match.email}`
+                `✅ Exam started for ${email} and ${match.email} with examId: ${examData.examId} and channel: ${uniqueChannelName}`
               );
+            } else {
+              if (ws.readyState === READY_STATES.OPEN) {
+                ws.send(JSON.stringify({ message: "🔍 Waiting for match..." }));
+              }
+            }
+          };
+
+          // حاول الماتشينج كل 5 ثواني
+          const matchInterval = setInterval(async () => {
+            if (!activeStudents.some((s) => s.email === email)) {
+              clearInterval(matchInterval); // توقف لو الطالب اتشال
               return;
             }
+            await tryMatching();
+          }, 5000);
 
-            const matchedUser = await User.findOne({
-              email: match.email,
-            }).lean();
-            if (!matchedUser) {
-              if (ws.readyState === READY_STATES.OPEN)
+          // أول محاولة فورية
+          await tryMatching();
+
+          // Timeout بعد 30 ثانية لو مفيش match
+          setTimeout(() => {
+            if (activeStudents.some((s) => s.email === email)) {
+              clearInterval(matchInterval);
+              removeStudentFromQueue(email);
+              if (ws.readyState === READY_STATES.OPEN) {
                 ws.send(
-                  JSON.stringify({ message: "❌ Matched user not found" })
+                  JSON.stringify({
+                    message: "⏰ Matchmaking timeout. Please try again.",
+                  })
                 );
-              console.log(`❌ Matched user ${match.email} not found`);
-              return;
+              }
+              console.log(`⏰ Removed ${email} from queue due to timeout`);
             }
-
-            const uniqueChannelName = `voice_channel_${examData.examId}_${studentData.student_id}_${match.student_id}`;
-
-            const responseForStudent1 = {
-              type: "exam_started",
-              examId: examData.examId,
-              duration: examData.duration || 20,
-              questions: examData.questions || [],
-              matchedUser: {
-                name: matchedUser.name || "Unknown",
-                studentId: matchedUser.student_id,
-                gradeLevelId: match.gradeLevelId,
-                subjectId: match.subjectId,
-              },
-              uniqueChannelName: uniqueChannelName,
-            };
-
-            const responseForStudent2 = {
-              type: "exam_started",
-              examId: examData.examId,
-              duration: examData.duration || 20,
-              questions: examData.questions || [],
-              matchedUser: {
-                name: user.name || "Unknown",
-                studentId: user.student_id,
-                gradeLevelId: studentData.gradeLevelId,
-                subjectId: studentData.subjectId,
-              },
-              uniqueChannelName: uniqueChannelName,
-            };
-
-            removeStudentFromQueue(email);
-            removeStudentFromQueue(match.email);
-
-            if (studentData.ws.readyState === READY_STATES.OPEN)
-              studentData.ws.send(JSON.stringify(responseForStudent1));
-
-            if (match.ws.readyState === READY_STATES.OPEN)
-              match.ws.send(JSON.stringify(responseForStudent2));
-
-            console.log(
-              `✅ Exam started for ${email} and ${match.email} with examId: ${examData.examId} and channel: ${uniqueChannelName}`
-            );
-          } else {
-            if (ws.readyState === READY_STATES.OPEN)
-              ws.send(JSON.stringify({ message: "🔍 Waiting for match..." }));
-          }
+          }, 30000);
         }
 
         if (data.type === "submit_answers") {
@@ -420,12 +458,14 @@ export default function setupWebSocket(wss) {
       }
     });
 
-    ws.on("close", () => {
+    ws.on("close", (code, reason) => {
       if (ws.email) {
         removeStudentFromQueue(ws.email);
         verifiedUsers.delete(ws.email);
         console.log(
-          `🔴 ${ws.email} disconnected, removed from queue and verifiedUsers`
+          `🔴 ${ws.email} disconnected, code: ${code}, reason: ${
+            reason || "No reason provided"
+          }, removed from queue and verifiedUsers`
         );
       }
     });
