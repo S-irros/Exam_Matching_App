@@ -68,7 +68,7 @@ router.post("/update-ranks", async (req, res) => {
     res.status(200).json({
       message: "Ranks updated successfully!",
       ranks: updatedRanks,
-      warnings: [...new Set(updatedRanks.filter((rank) => rank.warning).map((rank) => rank.warning))], // تحذيرات فريدة
+      warnings: [...new Set(updatedRanks.filter((rank) => rank.warning).map((rank) => rank.warning))],
     });
   } catch (error) {
     console.error("❌ Error updating ranks:", error.message);

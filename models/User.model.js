@@ -32,6 +32,8 @@ const userSchema = new Schema(
     permanentlyDeleted: Date,
     changeAccountInfo: Date,
     subjects: [{ type: Number }],
+    profilePic: { type: String },
+    profilePicPublicId: { type: String },
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
