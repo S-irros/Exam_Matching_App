@@ -749,7 +749,7 @@ export default function setupWebSocket(wss) {
                 questions: examData.questions || [],
                 matchedUser: {
                   name: matchedUserFromDB?.name || "Unknown",
-                  studentId: matchedUserFromDB?.student_id,
+                  studentId: matchedUserFromDB?.randomId?.toString() || "N/A",
                   profilePic: matchedUserFromDB?.profilePic || "",
                   rank: matchedUserFromDB?.rank,
                   gradeLevelId: match.gradeLevelId,
@@ -765,7 +765,10 @@ export default function setupWebSocket(wss) {
                 questions: examData.questions || [],
                 matchedUser: {
                   name: studentUserFromDB?.name || "Unknown",
-                  studentId: studentUserFromDB?.student_id,
+                  studentId:
+                    studentUserFromDB?.randomId?.toString() ||
+                    studentData?.student_id?.toString() ||
+                    "N/A",
                   profilePic: studentUserFromDB?.profilePic || "",
                   rank: studentUserFromDB?.rank,
                   gradeLevelId: studentData.gradeLevelId,
@@ -774,7 +777,6 @@ export default function setupWebSocket(wss) {
                 uniqueChannelName: uniqueChannelName,
               };
 
-              // إضافة التحقق هنا
               if (
                 studentData.ws.readyState === READY_STATES.OPEN &&
                 match.ws.readyState === READY_STATES.OPEN
