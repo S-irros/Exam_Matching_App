@@ -724,6 +724,7 @@ export default function setupWebSocket(wss) {
                 matchedUser: {
                   name: matchedUser.name || "Unknown",
                   studentId: matchedUser.student_id,
+                  profilePic: matchedUser.profilePic || "",
                   gradeLevelId: match.gradeLevelId,
                   subjectId: match.subjectId,
                 },
@@ -738,6 +739,7 @@ export default function setupWebSocket(wss) {
                 matchedUser: {
                   name: user.name || "Unknown",
                   studentId: user.student_id,
+                  profilePic: user.profilePic || "",
                   gradeLevelId: studentData.gradeLevelId,
                   subjectId: studentData.subjectId,
                 },
