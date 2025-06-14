@@ -32,8 +32,10 @@ const userSchema = new Schema(
     permanentlyDeleted: Date,
     changeAccountInfo: Date,
     subjects: [{ type: Number }],
-    profilePic: { type: String },
+    profilePic: { type: String, required: true },
     profilePicPublicId: { type: String },
+    totalPoints: { type: Number, default: 0 },
+    rank: { type: Number, default: 1 }
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );

@@ -591,7 +591,7 @@ export default function setupWebSocket(wss) {
   }
 
   wss.on("connection", (ws) => {
-    console.log(`🟢 New WebSocket connection for ${ws.email || 'unknown'}`);
+    console.log(`🟢 New WebSocket connection for ${ws.email || "unknown"}`);
 
     ws.on("message", async (message) => {
       console.log("📩 Received raw message:", message.toString());
@@ -604,6 +604,7 @@ export default function setupWebSocket(wss) {
           console.log("🔍 Attempting to verify login for:", email);
           try {
             const user = await verifyToken(email, token);
+            verifiedUsers.delete(email);
             ws.user = user;
             ws.email = email;
             verifiedUsers.set(email, user);
@@ -701,6 +702,9 @@ export default function setupWebSocket(wss) {
                 return;
               }
 
+              console.log(
+                `match.email: ${match.email}, match.student_id: ${match.student_id}`
+              );
               const matchedUser = await User.findOne({
                 email: match.email,
               }).lean();
@@ -716,15 +720,39 @@ export default function setupWebSocket(wss) {
 
               const uniqueChannelName = `voice_channel_${examData.examId}_${studentData.student_id}_${match.student_id}`;
 
+              const matchedUserFromDB = await User.findOne({
+                email: match.email,
+              }).lean();
+              const studentUserFromDB = await User.findOne({
+                email: studentData.email,
+              }).lean();
+
+              console.log(
+                `🔍 Fetched matchedUserFromDB for ${
+                  match.email
+                }: totalPoints = ${
+                  matchedUserFromDB?.totalPoints ?? "undefined"
+                }`
+              );
+              console.log(
+                `🔍 Fetched studentUserFromDB for ${
+                  studentData.email
+                }: totalPoints = ${
+                  studentUserFromDB?.totalPoints ?? "undefined"
+                }`
+              );
+
               const responseForStudent1 = {
                 type: "exam_started",
                 examId: examData.examId,
                 duration: examData.duration || 20,
                 questions: examData.questions || [],
                 matchedUser: {
-                  name: matchedUser.name || "Unknown",
-                  studentId: matchedUser.student_id,
-                  profilePic: matchedUser.profilePic || "",
+                  name: matchedUserFromDB?.name || "Unknown",
+                  studentId: matchedUserFromDB?.student_id,
+                  profilePic: matchedUserFromDB?.profilePic || "",
+                  totalPoints: matchedUserFromDB?.totalPoints ?? 0,
+                  rank: matchedUserFromDB?.rank,
                   gradeLevelId: match.gradeLevelId,
                   subjectId: match.subjectId,
                 },
@@ -737,9 +765,11 @@ export default function setupWebSocket(wss) {
                 duration: examData.duration || 20,
                 questions: examData.questions || [],
                 matchedUser: {
-                  name: user.name || "Unknown",
-                  studentId: user.student_id,
-                  profilePic: user.profilePic || "",
+                  name: studentUserFromDB?.name || "Unknown",
+                  studentId: studentUserFromDB?.student_id,
+                  profilePic: studentUserFromDB?.profilePic || "",
+                  totalPoints: studentUserFromDB?.totalPoints ?? 0,
+                  rank: studentUserFromDB?.rank,
                   gradeLevelId: studentData.gradeLevelId,
                   subjectId: studentData.subjectId,
                 },
@@ -942,9 +972,20 @@ export default function setupWebSocket(wss) {
             examRecord.completed = true;
             examRecord.score = score;
             await examRecord.save();
-            console.log(
-              `✅ Updated ExamRecord for user ${studentId} in exam ${examId} as completed with score: ${score}`
-            );
+
+            const userToUpdate = await User.findOne({ randomId: studentId });
+            if (userToUpdate) {
+              userToUpdate.totalPoints =
+                (userToUpdate.totalPoints || 0) + score;
+              await userToUpdate.save({ validateBeforeSave: false });
+              console.log(
+                `✅ Updated totalPoints for user ${studentId} to ${userToUpdate.totalPoints}`
+              );
+            } else {
+              console.log(
+                `⚠️ User ${studentId} not found for updating totalPoints`
+              );
+            }
 
             removeStudentFromQueue(email);
             console.log(
