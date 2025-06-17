@@ -695,9 +695,9 @@ export default function setupWebSocket(wss) {
             student_id: user.student_id,
             subjectId: Number(subjectId),
             gradeLevelId: Number(gradeLevelId),
-            genderId: user.gender,
+            genderId: user.genderId,
             preferred_gender_id: Number(preferred_gender_id),
-            scientificTrackId,
+            scientificTrackId: userFromDB?.scientificTrack || undefined,
             totalPoints,
           };
 

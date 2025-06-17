@@ -125,18 +125,32 @@ router.delete("/:id", async (req, res) => {
 router.get("/", async (req, res) => {
   try {
     const { gradeLevelId, scientificTrackId } = req.query;
-    const query = {};
-    if (gradeLevelId) query.gradeLevelId = Number(gradeLevelId);
-    if (scientificTrackId) query.scientificTrackId = Number(scientificTrackId);
+    let query = {};
+
+    if (scientificTrackId) {
+      query.scientificTrackId = Number(scientificTrackId);
+      if (gradeLevelId) {
+        const track = await ScientificTrack.findOne({ trackId: Number(scientificTrackId) });
+        if (track && track.gradeLevelId !== Number(gradeLevelId)) {
+          return res.status(400).json({ message: "Scientific track does not match grade level." });
+        }
+        query.gradeLevelId = Number(gradeLevelId);
+      }
+    } else if (gradeLevelId) {
+      query.gradeLevelId = Number(gradeLevelId);
+    } else {
+      return res.status(400).json({ message: "gradeLevelId or scientificTrackId is required." });
+    }
 
     const mySubjects = await Subject.find(query).populate("gradeLevelRef");
+    if (!mySubjects || mySubjects.length === 0) {
+      return res.status(404).json({ message: "No subjects found for the given track or grade." });
+    }
 
     res.status(200).json(mySubjects);
   } catch (error) {
     console.error("❌ Error fetching subjects:", error.message);
-    res
-      .status(500)
-      .json({ message: "Error fetching subjects.", error: error.message });
+    res.status(500).json({ message: "Error fetching subjects.", error: error.message });
   }
 });
 
