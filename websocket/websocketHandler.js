@@ -737,7 +737,7 @@ export default function setupWebSocket(wss) {
                   `Attempting to start exam for ${email} and ${match.email}`
                 );
                 const examData = await startExam(studentData, match);
-                onsole.log(`Exam data from startExam: ${JSON.stringify(examData)}`);
+                console.log(`Exam data from startExam: ${JSON.stringify(examData)}`);
                 if (!examData || !examData.examId) {
                   console.log(
                     `❌ Failed to start exam, examData: ${JSON.stringify(
