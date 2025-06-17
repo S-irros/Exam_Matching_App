@@ -22,7 +22,7 @@ async function verifyToken(email, token) {
       name: decoded.name,
       gradeLevelId: decoded.gradeLevelId,
       subjects: decoded.subjects,
-      scientificTrack: decoded.scientificTrack,
+      scientificTrack: scientificTrack,
       status: decoded.status,
       availability: decoded.availability,
       gender: decoded.gender,
