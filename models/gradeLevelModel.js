@@ -8,7 +8,8 @@ const gradeLevelSchema = new mongoose.Schema({
     default: () => Math.floor(1000 + Math.random() * 9000),
   },
   name: { type: String, required: true },
-  subjects: { type: [String], required: true, default: [] },
+  subjects: { type: [Number], required: true, default: [] },
+  scientificTrackIds: { type: [Number], default: [] },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 });

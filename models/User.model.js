@@ -23,6 +23,7 @@ const userSchema = new Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "GradeLevel",
     },
+    scientificTrack: { type: Number, default: null },
     isConfirmed: { type: Boolean, default: false },
     isDeleted: { type: Boolean, default: false },
     isBlocked: { type: Boolean, default: false },
@@ -31,7 +32,7 @@ const userSchema = new Schema(
     otpexp: Date,
     permanentlyDeleted: Date,
     changeAccountInfo: Date,
-    subjects: [{ type: Number }],
+    subjects: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Subject' }],
     profilePic: { type: String, required: true },
     profilePicPublicId: { type: String },
     totalPoints: { type: Number, default: 0 },
@@ -42,6 +43,13 @@ const userSchema = new Schema(
 
 userSchema.pre("find", function () {
   this.where({ isDeleted: false });
+});
+
+userSchema.virtual('trackDetails', {
+  ref: 'ScientificTrack',
+  localField: 'scientificTrack',
+  foreignField: 'trackId',
+  justOne: true,
 });
 
 const userModel = mongoose.models.User || model("User", userSchema);

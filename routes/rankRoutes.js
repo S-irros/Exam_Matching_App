@@ -26,7 +26,7 @@ router.post("/update-ranks", async (req, res) => {
             name: "Unknown",
             totalPoints: point.totalPoints,
             profilePic: null,
-            profilePicPublicId: null, 
+            profilePicPublicId: null,
             warning: `User with studentId ${point.studentId} not found in User table.`,
           };
         }
@@ -34,7 +34,7 @@ router.post("/update-ranks", async (req, res) => {
           studentId: point.studentId,
           name: user.name,
           totalPoints: point.totalPoints,
-          profilePic: user.profilePic || null,
+          profilePic: user.profilePic || "https://default-profile-pic-url.com/default.jpg", // صورة افتراضية
           profilePicPublicId: user.profilePicPublicId || null,
         };
       })

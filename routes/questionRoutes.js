@@ -29,7 +29,6 @@ router.post("/add-questions", async (req, res) => {
       }
     }
 
-    // التحقق من التكرار
     const duplicateQuestions = [];
     const questionsToInsert = [];
 
@@ -61,7 +60,6 @@ router.post("/add-questions", async (req, res) => {
       }
     }
 
-    // إذا كل الأسئلة متكررة
     if (questionsToInsert.length === 0) {
       return res.status(400).json({
         message: "All questions are duplicates and cannot be added.",
@@ -69,10 +67,8 @@ router.post("/add-questions", async (req, res) => {
       });
     }
 
-    // إضافة الأسئلة الجديدة فقط
     const insertedQuestions = await Question.insertMany(questionsToInsert);
 
-    // إرجاع الاستجابة مع تفاصيل الأسئلة المضافة والمتكررة
     const response = {
       message: `Successfully added ${insertedQuestions.length} questions!`,
       addedQuestions: insertedQuestions,
@@ -90,7 +86,6 @@ router.post("/add-questions", async (req, res) => {
   }
 });
 
-// باقي الروابط (استرجاع، تحديث، حذف) زي ما هي
 router.get("/", async (req, res) => {
   const { subjectId, gradeLevelId } = req.query;
   console.log("🚀 Received request to fetch questions:", { subjectId, gradeLevelId });

@@ -13,6 +13,7 @@ const subjectSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "GradeLevel",
   },
+  scientificTrackId: { type: Number, default: null },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 });
