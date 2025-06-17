@@ -696,10 +696,11 @@ export default function setupWebSocket(wss) {
             student_id: user.student_id,
             subjectId: Number(subjectId),
             gradeLevelId: Number(gradeLevelId),
-            genderId: genderId,
+            genderId,
             preferred_gender_id: Number(preferred_gender_id),
-            scientificTrackId: userFromDB?.scientificTrack || undefined,
+            scientificTrackId,
             totalPoints,
+            isExamStarted: false, // تهيئة المتغير
           };
 
           activeStudents.push(studentData);
@@ -728,21 +729,37 @@ export default function setupWebSocket(wss) {
                 return;
               }
 
-              // التحقق إذا الامتحان بدأ من قبل
               if (!studentData.isExamStarted && !match.isExamStarted) {
                 studentData.isExamStarted = true;
                 match.isExamStarted = true;
 
+                console.log(
+                  `Attempting to start exam for ${email} and ${match.email}`
+                );
                 const examData = await startExam(studentData, match);
+                onsole.log(`Exam data from startExam: ${JSON.stringify(examData)}`);
                 if (!examData || !examData.examId) {
+                  console.log(
+                    `❌ Failed to start exam, examData: ${JSON.stringify(
+                      examData
+                    )}`
+                  );
                   if (ws.readyState === READY_STATES.OPEN)
                     ws.send(
-                      JSON.stringify({ message: "❌ Failed to start exam" })
+                      JSON.stringify({
+                        message: "❌ Failed to start exam",
+                        error: "Invalid exam data",
+                      })
                     );
-                  console.log(
-                    `❌ Failed to start exam for ${email} and ${match.email}`
-                  );
+                  if (match.ws.readyState === READY_STATES.OPEN)
+                    match.ws.send(
+                      JSON.stringify({
+                        message: "❌ Failed to start exam",
+                        error: "Invalid exam data",
+                      })
+                    );
                   removeStudentFromQueue(email);
+                  removeStudentFromQueue(match.email);
                   clearInterval(matchInterval);
                   return;
                 }
@@ -791,10 +808,11 @@ export default function setupWebSocket(wss) {
                       gradeLevelId: other.gradeLevelId,
                       subjectId: other.subjectId,
                     },
-                    uniqueChannelName: uniqueChannelName,
+                    uniqueChannelName,
                   };
                   if (student.ws.readyState === READY_STATES.OPEN) {
                     student.ws.send(JSON.stringify(response));
+                    console.log(`Sent exam_started to ${student.email}`);
                   }
                 };
 
@@ -857,7 +875,6 @@ export default function setupWebSocket(wss) {
           // بدء مراقبة الاتصال
           monitorConnection(ws, email);
         }
-
         if (data.type === "submit_answers") {
           const { examId, studentId, answers, email } = data;
           if (

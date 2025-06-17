@@ -23,10 +23,12 @@ const updateRanks = async () => {
     }
 
     console.log("🔍 Fetching users...");
-    const users = await User.find({ randomId: { $in: points.map(p => p.studentId) } }).lean();
+    const users = await User.find({
+      randomId: { $in: points.map((p) => p.studentId) },
+    }).lean();
     console.log("👥 Users found:", users.length, users);
 
-    const userMap = new Map(users.map(u => [u.randomId, u.name]));
+    const userMap = new Map(users.map((u) => [u.randomId, u.name]));
     const ranks = points.map((point, index) => ({
       studentId: point.studentId,
       name: userMap.get(point.studentId) || "Unknown",
@@ -43,85 +45,104 @@ const updateRanks = async () => {
     await Rank.insertMany(ranks);
     console.log("💾 Ranks updated in database:", ranks.length, "entries");
   } catch (error) {
-    console.error("❌ Error updating ranks in updateRanks:", error.message, error.stack);
+    console.error(
+      "❌ Error updating ranks in updateRanks:",
+      error.message,
+      error.stack
+    );
     throw error;
   }
 };
 
-router.post("/start-exam", async (req, res) => {
-  const { studentIds, subjectId, gradeLevelId } = req.body;
-  console.log("🚀 Received exam start request:", req.body);
-
-  if (
-    !Array.isArray(studentIds) ||
-    studentIds.length !== 2 ||
-    !subjectId ||
-    !gradeLevelId
-  ) {
-    return res
-      .status(400)
-      .json({
-        message:
-          "Invalid input. Ensure you provide two student IDs, a subject ID, and a grade level ID.",
-      });
-  }
-
+export async function startExam(student1, student2) {
   try {
-    const students = await User.find({ randomId: { $in: studentIds } });
-    if (students.length !== 2)
-      throw new Error("One or both students do not exist.");
+    const studentIds = [student1.student_id, student2.student_id];
+    const subjectId = student1.subjectId;
+    const gradeLevelId = student1.gradeLevelId;
 
-    const studentScores = await Promise.all(
-      studentIds.map(async (studentId) => {
-        const points = await Point.findOne({ studentId });
-        return { studentId, score: points ? points.totalPoints : 0 };
-      })
+    const [user1, user2] = await Promise.all([
+      User.findOne({ randomId: student1.student_id }).select("totalPoints"),
+      User.findOne({ randomId: student2.student_id }).select("totalPoints"),
+    ]);
+    const totalPoints1 = user1?.totalPoints || 0;
+    const totalPoints2 = user2?.totalPoints || 0;
+    let difficulty;
+    const maxPoints = Math.max(totalPoints1, totalPoints2);
+    if (maxPoints <= 400) difficulty = "easy";
+    else if (maxPoints <= 800) difficulty = "medium";
+    else if (maxPoints <= 1200) difficulty = "hard";
+    else difficulty = ["easy", "medium", "hard"];
+
+    const allQuestions = await Question.find({
+      subjectId,
+      gradeLevelId,
+    }).select("_id questionText options marks difficultyLevel correctAnswer");
+
+    if (allQuestions.length === 0) {
+      console.log(
+        `❌ No questions found in database for subjectId: ${subjectId}, gradeLevelId: ${gradeLevelId}`
+      );
+      throw new Error("No questions found in database");
+    }
+
+    let availableQuestions = allQuestions.filter((q) =>
+      Array.isArray(difficulty)
+        ? difficulty.includes(q.difficultyLevel)
+        : q.difficultyLevel === difficulty
     );
 
-    const averageScore =
-      studentScores.reduce((sum, student) => sum + student.score, 0) /
-      studentScores.length;
-    let difficultyLevel =
-      averageScore <= 350 ? "easy" : averageScore <= 700 ? "medium" : "hard";
-    console.log(
-      `📊 Average score: ${averageScore}, Difficulty Level: ${difficultyLevel}`
-    );
-
-    const answeredQuestions = await StudentAnswer.find({
-      studentId: { $in: studentIds },
-    }).distinct("questionId");
-    let questions = await Question.find({
-      subjectId: Number(subjectId),
-      gradeLevelId: Number(gradeLevelId),
-      difficultyLevel,
-      _id: { $nin: answeredQuestions },
-    }).limit(10);
-
-    console.log(
-      `🔍 Found new questions (difficulty: ${difficultyLevel}):`,
-      questions.length
-    );
-
-    const uniqueQuestions = Array.from(
-      new Map(questions.map((q) => [q._id.toString(), q])).values()
-    );
-    questions = uniqueQuestions;
-
-    if (questions.length === 0) {
+    if (availableQuestions.length === 0) {
+      console.log(
+        `⚠️ No questions available for difficulty level: ${
+          Array.isArray(difficulty) ? difficulty.join(", ") : difficulty
+        } with subjectId: ${subjectId}, gradeLevelId: ${gradeLevelId}`
+      );
       throw new Error(
-        `No ${difficultyLevel} questions available for the given subject and grade level.`
+        "No questions available for the selected difficulty level"
       );
     }
 
-    const examQuestions = questions.map((q) => ({
+    const [record1, record2] = await Promise.all([
+      ExamRecord.findOne({ studentId: student1.student_id }).select(
+        "answeredQuestions"
+      ),
+      ExamRecord.findOne({ studentId: student2.student_id }).select(
+        "answeredQuestions"
+      ),
+    ]);
+    const answeredQuestionIds = [
+      ...(record1?.answeredQuestions || []),
+      ...(record2?.answeredQuestions || []),
+    ].map((q) => q.toString());
+
+    availableQuestions = availableQuestions.filter(
+      (q) => !answeredQuestionIds.includes(q._id.toString())
+    );
+
+    if (availableQuestions.length < 10) {
+      console.log(
+        `❌ Not enough unique questions available after filtering answered ones. Available: ${
+          availableQuestions.length
+        }, Required: 5, subjectId: ${subjectId}, gradeLevelId: ${gradeLevelId}, difficulty: ${
+          Array.isArray(difficulty) ? difficulty.join(", ") : difficulty
+        }`
+      );
+      throw new Error("Not enough unique questions available");
+    }
+
+    const selectedQuestions = availableQuestions
+      .sort(() => 0.5 - Math.random())
+      .slice(0, 10);
+    const questionsData = selectedQuestions.map((q) => ({
       questionId: q._id,
       questionText: q.questionText,
       options: q.options,
-      marks: q.marks || 5,
+      marks: q.marks,
+      correctAnswer: q.correctAnswer,
     }));
 
     const exam = new Exam({
-      questions: examQuestions,
+      questions: questionsData,
       duration: 20,
       studentIds: studentIds,
     });
@@ -137,27 +158,12 @@ router.post("/start-exam", async (req, res) => {
     }));
     await ExamRecord.insertMany(examRecords);
 
-    const studentEmails = students
-      .map((student) => student.email)
-      .join(" and ");
-    console.log(
-      `📚 Exam started for ${studentEmails} with ${examQuestions.length} questions`
-    );
-
-    res.status(201).json({
-      message: `Exam started successfully for students (${studentIds[0]}, ${studentIds[1]})!`,
-      examId: examId.toString(),
-      duration: 20,
-      questions: examQuestions,
-      difficultyLevel,
-    });
+    return { examId, duration: 20, questions: questionsData };
   } catch (error) {
-    console.error("❌ Error starting the exam:", error.message);
-    res
-      .status(500)
-      .json({ message: "Error starting the exam.", error: error.message });
+    console.error(`❌ Error starting exam in examService: ${error.message}`);
+    throw error;
   }
-});
+}
 
 router.get("/update-ranks", async (req, res) => {
   try {
@@ -186,7 +192,11 @@ router.post("/submit-answers", async (req, res) => {
 
   try {
     console.log("🔍 Calculating score...");
-    const { totalScore, responseDetails } = await calculateScore(examId, studentId, answers);
+    const { totalScore, responseDetails } = await calculateScore(
+      examId,
+      studentId,
+      answers
+    );
     console.log("Response details:", responseDetails);
     console.log("✅ Score:", totalScore);
 
@@ -224,7 +234,9 @@ router.post("/submit-answers", async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Error:", error.message);
-    res.status(500).json({ message: "Error submitting answers.", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Error submitting answers.", error: error.message });
   }
 });
 
