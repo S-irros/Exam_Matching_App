@@ -77,18 +77,22 @@ export async function startExam(student1, student2) {
       correctAnswer: q.correctAnswer,
     }));
 
-    const response = await axios.post("http://localhost:8080/api/exams/start-exam", {
-      studentIds,
-      subjectId,
-      gradeLevelId,
+    const exam = new Exam({
       questions: questionsData,
+      duration: 20,
+      studentIds: studentIds,
     });
+    await exam.save();
+    const examId = exam._id;
 
-    const { examId, duration } = response.data;
-
-    if (!examId || !Array.isArray(questionsData) || !duration) {
-      throw new Error("Invalid exam data received from API");
-    }
+    const examRecords = studentIds.map((studentId) => ({
+      examId: examId,
+      studentId: studentId,
+      score: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }));
+    await ExamRecord.insertMany(examRecords);
 
     await Promise.all([
       ExamRecord.findOneAndUpdate(
@@ -103,7 +107,7 @@ export async function startExam(student1, student2) {
       ),
     ]);
 
-    return { examId, duration, questions: questionsData };
+    return { examId, duration: 20, questions: questionsData };
   } catch (error) {
     console.error(`❌ Error starting exam in examService: ${error.message}`);
     throw error;
