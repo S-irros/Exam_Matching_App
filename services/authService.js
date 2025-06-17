@@ -25,7 +25,7 @@ async function verifyToken(email, token) {
       scientificTrack: decoded.scientificTrack,
       status: decoded.status,
       availability: decoded.availability,
-      gender: decoded.gender,
+      genderId: decoded.gender,
       role: decoded.role,
       isConfirmed: decoded.isConfirmed,
       isDeleted: decoded.isDeleted,

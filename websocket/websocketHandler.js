@@ -684,10 +684,11 @@ export default function setupWebSocket(wss) {
           }
 
           const userFromDB = await User.findOne({ email }).select(
-            "scientificTrack totalPoints"
+            "scientificTrack totalPoints gender"
           );
           const scientificTrackId = userFromDB?.scientificTrack || undefined;
           const totalPoints = userFromDB?.totalPoints || 0;
+          const genderId = userFromDB?.gender || user.genderId;
 
           const studentData = {
             ws,
@@ -695,7 +696,7 @@ export default function setupWebSocket(wss) {
             student_id: user.student_id,
             subjectId: Number(subjectId),
             gradeLevelId: Number(gradeLevelId),
-            genderId: user.genderId,
+            genderId: genderId,
             preferred_gender_id: Number(preferred_gender_id),
             scientificTrackId: userFromDB?.scientificTrack || undefined,
             totalPoints,
