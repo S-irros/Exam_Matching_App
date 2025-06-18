@@ -14,11 +14,14 @@ export async function startExam(student1, student2) {
 
     // جلب totalPoints لكل طالب
     const [user1, user2] = await Promise.all([
-      User.findOne({ randomId: student1.student_id }).select("totalPoints"),
-      User.findOne({ randomId: student2.student_id }).select("totalPoints"),
+      User.findOne({ randomId: student1.student_id }).select("totalPoints rank"),
+      User.findOne({ randomId: student2.student_id }).select("totalPoints rank"),
     ]);
     const totalPoints1 = user1?.totalPoints || 0;
     const totalPoints2 = user2?.totalPoints || 0;
+    const rank1 = user1?.rank || 1;
+    const rank2 = user2?.rank || 1;
+
     let difficulty;
     const maxPoints = Math.max(totalPoints1, totalPoints2);
     if (maxPoints <= 400) difficulty = "easy";
@@ -172,5 +175,16 @@ export async function calculateScore(examId, studentId, answers) {
   }
 
   await StudentAnswer.insertMany(studentAnswers);
+
+  // تحديث totalPoints و rank
+  const userToUpdate = await User.findOne({ randomId: studentId });
+  if (userToUpdate) {
+    userToUpdate.totalPoints = (userToUpdate.totalPoints || 0) + totalScore;
+    // حساب الـ rank بناءً على totalPoints (مثال: rank = ceil(totalPoints / 100) أو حسب منطقك)
+    userToUpdate.rank = Math.ceil(userToUpdate.totalPoints / 100) || 1;
+    await userToUpdate.save({ validateBeforeSave: false });
+    console.log(`✅ Updated totalPoints: ${userToUpdate.totalPoints}, rank: ${userToUpdate.rank} for user ${studentId}`);
+  }
+
   return { totalScore, responseDetails, message: `Exam completed! Your score is ${totalScore}` };
 }

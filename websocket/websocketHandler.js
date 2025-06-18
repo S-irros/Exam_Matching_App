@@ -675,12 +675,10 @@ export default function setupWebSocket(wss) {
           }
 
           if (activeStudents.some((s) => s.email === email)) {
-            if (ws.readyState === READY_STATES.OPEN)
-              ws.send(
-                JSON.stringify({ message: "❌ Already in matchmaking queue" })
-              );
-            console.log(`⚠️ ${email} tried to join queue again`);
-            return;
+            removeStudentFromQueue(email); // إزالة الطالب من الـ queue قبل إعادة المحاولة
+            console.log(
+              `⚠️ ${email} was in queue, removed to retry matchmaking`
+            );
           }
 
           const userFromDB = await User.findOne({ email }).select(
@@ -737,7 +735,9 @@ export default function setupWebSocket(wss) {
                   `Attempting to start exam for ${email} and ${match.email}`
                 );
                 const examData = await startExam(studentData, match);
-                console.log(`Exam data from startExam: ${JSON.stringify(examData)}`);
+                console.log(
+                  `Exam data from startExam: ${JSON.stringify(examData)}`
+                );
                 if (!examData || !examData.examId) {
                   console.log(
                     `❌ Failed to start exam, examData: ${JSON.stringify(

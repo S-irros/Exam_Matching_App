@@ -9,13 +9,17 @@ router.post("/update-ranks", async (req, res) => {
   try {
     const pointsData = await Point.find().lean();
     if (pointsData.length === 0) {
-      return res.status(200).json({ message: "No students with points found." });
+      return res
+        .status(200)
+        .json({ message: "No students with points found." });
     }
 
     const rankedStudents = await Promise.all(
       pointsData.map(async (point) => {
         if (point.totalPoints == null || isNaN(point.totalPoints)) {
-          console.warn(`⚠️ Invalid totalPoints for studentId: ${point.studentId}, setting to 0`);
+          console.warn(
+            `⚠️ Invalid totalPoints for studentId: ${point.studentId}, setting to 0`
+          );
           point.totalPoints = 0;
         }
         const user = await User.findOne({ randomId: point.studentId }).lean();
@@ -34,7 +38,9 @@ router.post("/update-ranks", async (req, res) => {
           studentId: point.studentId,
           name: user.name,
           totalPoints: point.totalPoints,
-          profilePic: user.profilePic || "https://default-profile-pic-url.com/default.jpg", // صورة افتراضية
+          profilePic:
+            user.profilePic ||
+            "https://default-profile-pic-url.com/default.jpg", // صورة افتراضية
           profilePicPublicId: user.profilePicPublicId || null,
         };
       })
@@ -46,8 +52,9 @@ router.post("/update-ranks", async (req, res) => {
       studentId: student.studentId,
       name: student.name,
       totalPoints: student.totalPoints,
-      profilePic: student.profilePic,
-      profilePicPublicId: student.profilePicPublicId,
+      profilePic:
+        student.profilePic || "https://default-profile-pic-url.com/default.jpg",
+      profilePicPublicId: student.profilePicPublicId || null,
       rank: index + 1,
       updatedAt: new Date(),
       ...(student.warning && { warning: student.warning }),
@@ -68,11 +75,19 @@ router.post("/update-ranks", async (req, res) => {
     res.status(200).json({
       message: "Ranks updated successfully!",
       ranks: updatedRanks,
-      warnings: [...new Set(updatedRanks.filter((rank) => rank.warning).map((rank) => rank.warning))],
+      warnings: [
+        ...new Set(
+          updatedRanks
+            .filter((rank) => rank.warning)
+            .map((rank) => rank.warning)
+        ),
+      ],
     });
   } catch (error) {
     console.error("❌ Error updating ranks:", error.message);
-    res.status(500).json({ message: "Error updating ranks.", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Error updating ranks.", error: error.message });
   }
 });
 
@@ -97,7 +112,9 @@ router.get("/ranks", async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Error retrieving ranks:", error.message);
-    res.status(500).json({ message: "Error retrieving ranks.", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Error retrieving ranks.", error: error.message });
   }
 });
 
