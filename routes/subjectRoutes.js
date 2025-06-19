@@ -12,7 +12,8 @@ const authMiddleware = async (req, res, next) => {
     return res.status(401).json({ message: "No token provided." });
   }
   try {
-    const email = req.query.email || "default@example.com"; // افتراضي، يفضل تحديد email من request
+    const decoded = jwt.verify(token, process.env.SIGNATURE, { ignoreExpiration: false });
+    const email = decoded.email;
     const user = await verifyToken(email, token);
     req.user = user;
     console.log(
