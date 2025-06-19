@@ -2,8 +2,31 @@ import express from "express";
 import Subject from "../models/subjectModel.js";
 import GradeLevel from "../models/gradeLevelModel.js";
 import ScientificTrack from "../models/ScientificTrack.model.js";
+import verifyToken from "../services/authService.js";
 
 const router = express.Router();
+
+const authMiddleware = async (req, res, next) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) {
+    return res.status(401).json({ message: "No token provided." });
+  }
+  try {
+    const email = req.query.email || "default@example.com"; // افتراضي، يفضل تحديد email من request
+    const user = await verifyToken(email, token);
+    req.user = user;
+    console.log(
+      "🔍 [AUTH] User verified:",
+      user.name,
+      "Subjects:",
+      user.subjects
+    );
+    next();
+  } catch (error) {
+    console.error("❌ [AUTH] Token verification failed:", error.message);
+    res.status(401).json({ message: "Invalid token.", error: error.message });
+  }
+};
 
 // @route   POST /api/subjects
 // @desc    إضافة مادة دراسية جديدة
@@ -37,12 +60,13 @@ router.post("/", async (req, res) => {
       const existingTrack = await ScientificTrack.findOne({
         trackId: Number(scientificTrackId),
       });
-      if (!existingTrack || existingTrack.gradeLevelId !== Number(gradeLevelId)) {
-        return res
-          .status(400)
-          .json({
-            message: "Invalid scientific track ID for this grade level.",
-          });
+      if (
+        !existingTrack ||
+        existingTrack.gradeLevelId !== Number(gradeLevelId)
+      ) {
+        return res.status(400).json({
+          message: "Invalid scientific track ID for this grade level.",
+        });
       }
     }
 
@@ -52,11 +76,9 @@ router.post("/", async (req, res) => {
       scientificTrackId: Number(scientificTrackId),
     });
     if (existingSubject) {
-      return res
-        .status(400)
-        .json({
-          message: "Subject already exists for this grade level and track.",
-        });
+      return res.status(400).json({
+        message: "Subject already exists for this grade level and track.",
+      });
     }
 
     const subject = new Subject({
@@ -122,7 +144,8 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
-router.get("/", async (req, res) => {
+router.get("/", authMiddleware, async (req, res) => {
+  console.log("🔍 [GET_SUBJECTS] Request received with query:", req.query);
   try {
     const { gradeLevelId, scientificTrackId } = req.query;
     let query = {};
@@ -130,27 +153,53 @@ router.get("/", async (req, res) => {
     if (scientificTrackId) {
       query.scientificTrackId = Number(scientificTrackId);
       if (gradeLevelId) {
-        const track = await ScientificTrack.findOne({ trackId: Number(scientificTrackId) });
+        const track = await ScientificTrack.findOne({
+          trackId: Number(scientificTrackId),
+        });
         if (track && track.gradeLevelId !== Number(gradeLevelId)) {
-          return res.status(400).json({ message: "Scientific track does not match grade level." });
+          console.log("❌ [GET_SUBJECTS] Track mismatch");
+          return res
+            .status(400)
+            .json({ message: "Scientific track does not match grade level." });
         }
         query.gradeLevelId = Number(gradeLevelId);
       }
     } else if (gradeLevelId) {
       query.gradeLevelId = Number(gradeLevelId);
     } else {
-      return res.status(400).json({ message: "gradeLevelId or scientificTrackId is required." });
+      console.log("❌ [GET_SUBJECTS] Missing params");
+      return res
+        .status(400)
+        .json({ message: "gradeLevelId or scientificTrackId is required." });
     }
 
+    // فلترة بناءً على subjects من الـ token
+    const userSubjects = req.user.subjects || [];
+    if (userSubjects.length > 0) {
+      query.subjectId = { $in: userSubjects.map((id) => Number(id)) };
+    }
+    console.log("🔍 [GET_SUBJECTS] Query constructed:", query);
+
     const mySubjects = await Subject.find(query).populate("gradeLevelRef");
+    console.log("✅ [GET_SUBJECTS] Subjects fetched:", mySubjects.length);
     if (!mySubjects || mySubjects.length === 0) {
-      return res.status(404).json({ message: "No subjects found for the given track or grade." });
+      console.log("⚠️ [GET_SUBJECTS] No subjects found");
+      return res
+        .status(404)
+        .json({ message: "No subjects found for the given track or grade." });
     }
 
     res.status(200).json(mySubjects);
   } catch (error) {
-    console.error("❌ Error fetching subjects:", error.message);
-    res.status(500).json({ message: "Error fetching subjects.", error: error.message });
+    console.error(
+      "❌ [GET_SUBJECTS] Error:",
+      error.message,
+      "Stack:",
+      error.stack
+    );
+    res
+      .status(500)
+      .json({ message: "Error fetching subjects.", error: error.message });
   }
 });
 
