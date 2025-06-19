@@ -12,15 +12,13 @@ const authMiddleware = async (req, res, next) => {
     return res.status(401).json({ message: "No token provided." });
   }
   try {
-    const decoded = jwt.verify(token, process.env.SIGNATURE, { ignoreExpiration: false });
-    const email = decoded.email;
-    const user = await verifyToken(email, token);
-    req.user = user;
+    const decoded = await verifyToken(req.user.email, token);
+    req.user = decoded;
     console.log(
       "🔍 [AUTH] User verified:",
-      user.name,
+      decoded.name,
       "Subjects:",
-      user.subjects
+      decoded.subjects
     );
     next();
   } catch (error) {
@@ -153,28 +151,15 @@ router.get("/", authMiddleware, async (req, res) => {
 
     if (scientificTrackId) {
       query.scientificTrackId = Number(scientificTrackId);
-      if (gradeLevelId) {
-        const track = await ScientificTrack.findOne({
-          trackId: Number(scientificTrackId),
-        });
-        if (track && track.gradeLevelId !== Number(gradeLevelId)) {
-          console.log("❌ [GET_SUBJECTS] Track mismatch");
-          return res
-            .status(400)
-            .json({ message: "Scientific track does not match grade level." });
-        }
-        query.gradeLevelId = Number(gradeLevelId);
-      }
+      if (gradeLevelId) query.gradeLevelId = Number(gradeLevelId);
     } else if (gradeLevelId) {
       query.gradeLevelId = Number(gradeLevelId);
     } else {
-      console.log("❌ [GET_SUBJECTS] Missing params");
       return res
         .status(400)
         .json({ message: "gradeLevelId or scientificTrackId is required." });
     }
 
-    // فلترة بناءً على subjects من الـ token
     const userSubjects = req.user.subjects || [];
     if (userSubjects.length > 0) {
       query.subjectId = { $in: userSubjects.map((id) => Number(id)) };
@@ -184,7 +169,6 @@ router.get("/", authMiddleware, async (req, res) => {
     const mySubjects = await Subject.find(query).populate("gradeLevelRef");
     console.log("✅ [GET_SUBJECTS] Subjects fetched:", mySubjects.length);
     if (!mySubjects || mySubjects.length === 0) {
-      console.log("⚠️ [GET_SUBJECTS] No subjects found");
       return res
         .status(404)
         .json({ message: "No subjects found for the given track or grade." });
