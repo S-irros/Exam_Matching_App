@@ -36,7 +36,7 @@ const userSchema = new Schema(
     profilePic: { type: String, required: true },
     profilePicPublicId: { type: String },
     totalPoints: { type: Number, default: 0 },
-    rank: { type: Number, default: 1 }
+    rank: { type: Number, default: 0 }
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
