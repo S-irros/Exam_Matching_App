@@ -843,7 +843,7 @@ app.use("/api", rankRoutes);
 app.use("/api", profileRoutes);
 app.use("/api", pointsRoutes);
 
-cron.schedule("*/15 * * * *", async () => {
+cron.schedule("*/5 * * * * *", async () => {
   console.log("⏰ Scheduled rank update started at:", new Date());
   try {
     await axios.post("http://localhost:8080/api/update-ranks");
