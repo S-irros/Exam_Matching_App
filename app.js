@@ -826,6 +826,7 @@ import rankRoutes from "./routes/rankRoutes.js";
 import setupWebSocket from "./websocket/websocketHandler.js";
 import profileRoutes from "./routes/profileRoutes.js";
 import scientificTrackRoutes from "./routes/scientificTrackRoutes.js"
+import pointsRoutes from "./routes/PointsRoutes.js"
 
 const app = express();
 const server = http.createServer(app);
@@ -840,12 +841,16 @@ app.use("/api/scientific-track", scientificTrackRoutes);
 app.use("/api/exams", examRoutes);
 app.use("/api", rankRoutes);
 app.use("/api", profileRoutes);
+app.use("/api", pointsRoutes);
 
-cron.schedule("0 * * * *", async () => {
+cron.schedule("*/15 * * * *", async () => {
   console.log("⏰ Scheduled rank update started at:", new Date());
   try {
     await axios.post("http://localhost:8080/api/update-ranks");
     console.log("✅ Rank update completed successfully!");
+
+    await axios.post("http://localhost:8080/api/clean-points");
+    console.log("✅ Points cleaned after user deletion");
   } catch (error) {
     console.error("❌ Error in scheduled rank update:", error.message);
   }
