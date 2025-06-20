@@ -594,7 +594,7 @@ export default function setupWebSocket(wss) {
             removeStudentFromQueue(email);
             clearInterval(pingInterval);
             clearTimeout(pingTimeout);
-          }, 3000); // 3 ثواني
+          }, 10000); // 3 ثواني
         } else {
           console.log(`⚠️ ${email} not in activeStudents, stopping ping`);
           clearInterval(pingInterval);
