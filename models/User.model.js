@@ -1,6 +1,4 @@
 import mongoose, { model, Schema, Types } from "mongoose";
-import Rank from "./rankModel.js";
-import Point from "./pointModel.js";
 
 const userSchema = new Schema(
   {
@@ -34,59 +32,23 @@ const userSchema = new Schema(
     otpexp: Date,
     permanentlyDeleted: Date,
     changeAccountInfo: Date,
-    subjects: [{ type: Number, ref: "Subject" }],
+    subjects: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Subject' }],
     profilePic: { type: String, required: true },
     profilePicPublicId: { type: String },
     totalPoints: { type: Number, default: 0 },
-    rank: { type: Number, default: 0 },
+    rank: { type: Number, default: 0 }
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
-
-userSchema.pre("save", async function (next) {
-  let pointDoc = await Point.findOne({ studentId: this.randomId });
-  if (!pointDoc)
-    pointDoc = new Point({
-      studentId: this.randomId,
-      totalPoints: this.totalPoints,
-    });
-  pointDoc.totalPoints = this.totalPoints;
-  await pointDoc.save();
-  await Rank.updateOne(
-    { studentId: this.randomId },
-    {
-      totalPoints: this.totalPoints,
-      name: this.name,
-      profilePic: this.profilePic,
-      profilePicPublicId: this.profilePicPublicId,
-    },
-    { upsert: true }
-  );
-  next();
-});
-
-userSchema.post("findOneAndDelete", async function (doc) {
-  if (doc) {
-    await Rank.deleteOne({ studentId: doc.randomId });
-    await Point.deleteOne({ studentId: doc.randomId });
-
-    try {
-      await axios.post("http://localhost:8080/api/update-ranks");
-      console.log("✅ Rank update completed successfully after deletion.");
-    } catch (error) {
-      console.error("❌ Error updating ranks after deletion:", error.message);
-    }
-  }
-});
 
 userSchema.pre("find", function () {
   this.where({ isDeleted: false });
 });
 
-userSchema.virtual("trackDetails", {
-  ref: "ScientificTrack",
-  localField: "scientificTrack",
-  foreignField: "trackId",
+userSchema.virtual('trackDetails', {
+  ref: 'ScientificTrack',
+  localField: 'scientificTrack',
+  foreignField: 'trackId',
   justOne: true,
 });
 

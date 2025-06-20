@@ -99,7 +99,7 @@ router.get("/ranks", async (req, res) => {
       options.limit = Number(limit);
     }
 
-    const ranks = await Rank.find(query, null, options);
+    const ranks = await Rank.find(query, null, options).sort({ totalPoints: -1 });
     if (ranks.length === 0) {
       return res.status(404).json({ message: "No ranks found." });
     }
