@@ -1,4 +1,6 @@
 import mongoose, { model, Schema, Types } from "mongoose";
+import Rank from "./rankModel.js";
+import Point from "./pointModel.js";
 
 const userSchema = new Schema(
   {
@@ -17,7 +19,7 @@ const userSchema = new Schema(
       enum: ["Online", "Offline"],
     },
     genderId: { type: Number, default: 1, enum: [1, 2] },
-    role: { type: String, default: "student", enum: ["student"] },
+    role: { type: String, default: "user", enum: ["user"] },
     gradeLevelId: { type: Number, required: true },
     gradeLevelRef: {
       type: mongoose.Schema.Types.ObjectId,
@@ -32,7 +34,7 @@ const userSchema = new Schema(
     otpexp: Date,
     permanentlyDeleted: Date,
     changeAccountInfo: Date,
-    subjects: [{ type: mongoose.Schema.Types.ObjectId, ref: "Subject" }],
+    subjects: [{ type: Number, ref: "Subject" }],
     profilePic: { type: String, required: true },
     profilePicPublicId: { type: String },
     totalPoints: { type: Number, default: 0 },
