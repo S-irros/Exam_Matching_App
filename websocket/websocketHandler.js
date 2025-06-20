@@ -870,7 +870,7 @@ export default function setupWebSocket(wss) {
               }
               console.log(`⏰ Removed ${email} from queue due to timeout`);
             }
-          }, 30000);
+          }, 90000);
 
           // بدء مراقبة الاتصال
           monitorConnection(ws, email);
