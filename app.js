@@ -33,10 +33,10 @@ app.use("/api", pointsRoutes);
 cron.schedule("*/5 * * * *", async () => {
   console.log("⏰ Scheduled rank update started at:", new Date());
   try {
-    await axios.post("http://localhost:8080/api/update-ranks");
+    await axios.post("http://localhost:5000/api/update-ranks");
     console.log("✅ Rank update completed successfully!");
 
-    await axios.post("http://localhost:8080/api/clean-points");
+    await axios.post("http://localhost:5000/api/clean-points");
     console.log("✅ Points cleaned after user deletion");
   } catch (error) {
     console.error("❌ Error in scheduled rank update:", error.message);
@@ -47,6 +47,6 @@ connectToMongoDB();
 
 setupWebSocket(wss);
 
-server.listen(8080, () => {
-  console.log("🚀 Server running at http://localhost:8080");
+server.listen(5000, () => {
+  console.log("🚀 Server running at http://localhost:5000");
 });
