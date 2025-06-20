@@ -517,7 +517,7 @@ export default function setupWebSocket(wss) {
           );
           try {
             const response = await axios.post(
-              "http://localhost:5000/api/exams/submit-answers",
+              "http://localhost:8080/api/exams/submit-answers",
               {
                 examId,
                 studentId,

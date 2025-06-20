@@ -15,10 +15,10 @@ export const deleteUserAndUpdateRanks = async (filter) => {
   await Point.deleteOne({ studentId: user.randomId });
 
   try {
-    await axios.post("http://localhost:5000/api/update-ranks");
+    await axios.post("http://localhost:8080/api/update-ranks");
     console.log("✅ Ranks updated after user deletion");
 
-    await axios.post("http://localhost:5000/api/clean-points");
+    await axios.post("http://localhost:8080/api/clean-points");
     console.log("✅ Points cleaned after user deletion");
   } catch (err) {
     console.error("❌ Failed to update ranks:", err.message);
